@@ -2,7 +2,7 @@
 
 ## Overview
 
-M5Stack-**UNITRTC** related programs.compatible with BM8563 and HYM8563.
+M5Stack-**UNIT RTC** related programs.compatible with BM8563 and HYM8563.
 
 ## Related Link
 
