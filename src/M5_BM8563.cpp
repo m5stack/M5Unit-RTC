@@ -1,52 +1,41 @@
 #include "M5_BM8563.h"
 
-BM8563::BM8563()
-{
-    _addr = DEVICE_ADDR;
-}
+BM8563::BM8563() { _addr = DEVICE_ADDR; }
 
-BM8563::BM8563(uint8_t addr)
-{
-    _addr = addr;
-}
+BM8563::BM8563(uint8_t addr) { _addr = addr; }
 
-void BM8563::begin()
-{
+void BM8563::begin() {
     _wire = &Wire;
     _wire->begin();
-    writeReg(0x00,0x00);
-    writeReg(0x01,0x00);
-    writeReg(0x0D,0x00);
+    writeReg(0x00, 0x00);
+    writeReg(0x01, 0x00);
+    writeReg(0x0D, 0x00);
 }
 
-void BM8563::begin(TwoWire *wire)
-{
+void BM8563::begin(TwoWire *wire) {
     _wire = wire;
     _wire->begin();
-    writeReg(0x00,0x00);
-    writeReg(0x01,0x00);
-    writeReg(0x0D,0x00);
+    writeReg(0x00, 0x00);
+    writeReg(0x01, 0x00);
+    writeReg(0x0D, 0x00);
 }
 
-void BM8563::begin(TwoWire *wire, uint8_t scl, uint8_t sda, uint32_t i2c_freq)
-{
+void BM8563::begin(TwoWire *wire, uint8_t scl, uint8_t sda, uint32_t i2c_freq) {
     _wire = wire;
     _wire->begin(sda, scl, i2c_freq);
-    writeReg(0x00,0x00);
-    writeReg(0x01,0x00);
-    writeReg(0x0D,0x00);
+    writeReg(0x00, 0x00);
+    writeReg(0x01, 0x00);
+    writeReg(0x0D, 0x00);
 }
 
-void BM8563::writeReg(uint8_t reg, uint8_t data)
-{
+void BM8563::writeReg(uint8_t reg, uint8_t data) {
     _wire->beginTransmission(0x51);
     _wire->write(reg);
     _wire->write(data);
     _wire->endTransmission();
 }
 
-uint8_t BM8563::ReadReg(uint8_t reg)
-{
+uint8_t BM8563::ReadReg(uint8_t reg) {
     _wire->beginTransmission(0x51);
     _wire->write(reg);
     _wire->endTransmission(false);
@@ -54,15 +43,12 @@ uint8_t BM8563::ReadReg(uint8_t reg)
     return _wire->read();
 }
 
-void BM8563::getBm8563Time(void)
-{
+void BM8563::getBm8563Time(void) {
     _wire->beginTransmission(0x51);
     _wire->write(0x02);
     _wire->endTransmission(false);
     _wire->requestFrom(0x51, 7);
-    while (_wire->available())
-    {
-
+    while (_wire->available()) {
         _trdata[0] = _wire->read();
         _trdata[1] = _wire->read();
         _trdata[2] = _wire->read();
@@ -77,12 +63,10 @@ void BM8563::getBm8563Time(void)
     Str2Time();
 }
 
-void BM8563::Str2Time(void)
-{
-
+void BM8563::Str2Time(void) {
     Second = (asc[0] - 0x30) * 10 + asc[1] - 0x30;
     Minute = (asc[2] - 0x30) * 10 + asc[3] - 0x30;
-    Hour = (asc[4] - 0x30) * 10 + asc[5] - 0x30;
+    Hour   = (asc[4] - 0x30) * 10 + asc[5] - 0x30;
     /*
   uint8_t Hour;
   uint8_t Week;
@@ -92,18 +76,16 @@ void BM8563::Str2Time(void)
   */
 }
 
-void BM8563::DataMask()
-{
+void BM8563::DataMask() {
+    _trdata[0] = _trdata[0] & 0x7f;  //秒
+    _trdata[1] = _trdata[1] & 0x7f;  //分
+    _trdata[2] = _trdata[2] & 0x3f;  //时
 
-    _trdata[0] = _trdata[0] & 0x7f; //秒
-    _trdata[1] = _trdata[1] & 0x7f; //分
-    _trdata[2] = _trdata[2] & 0x3f; //时
+    _trdata[3] = _trdata[3] & 0x3f;  //日
+    _trdata[4] = _trdata[4] & 0x07;  //星期
+    _trdata[5] = _trdata[5] & 0x1f;  //月
 
-    _trdata[3] = _trdata[3] & 0x3f; //日
-    _trdata[4] = _trdata[4] & 0x07; //星期
-    _trdata[5] = _trdata[5] & 0x1f; //月
-
-    _trdata[6] = _trdata[6] & 0xff; //年
+    _trdata[6] = _trdata[6] & 0xff;  //年
 }
 /********************************************************************
 函 数 名： void Bcd2asc(void)
@@ -113,29 +95,25 @@ void BM8563::DataMask()
 入口参数：
 返 回 值：无
 ***********************************************************************/
-void BM8563::Bcd2asc(void)
-{
+void BM8563::Bcd2asc(void) {
     uint8_t i, j;
-    for (j = 0, i = 0; i < 7; i++)
-    {
-        asc[j++] = (_trdata[i] & 0xf0) >> 4 | 0x30; /*格式为: 秒 分 时 日 月 星期 年 */
+    for (j = 0, i = 0; i < 7; i++) {
+        asc[j++] =
+            (_trdata[i] & 0xf0) >> 4 | 0x30; /*格式为: 秒 分 时 日 月 星期 年 */
         asc[j++] = (_trdata[i] & 0x0f) | 0x30;
     }
 }
 
-uint8_t BM8563::Bcd2ToByte(uint8_t Value)
-{
+uint8_t BM8563::Bcd2ToByte(uint8_t Value) {
     uint8_t tmp = 0;
-    tmp = ((uint8_t)(Value & (uint8_t)0xF0) >> (uint8_t)0x4) * 10;
+    tmp         = ((uint8_t)(Value & (uint8_t)0xF0) >> (uint8_t)0x4) * 10;
     return (tmp + (Value & (uint8_t)0x0F));
 }
 
-uint8_t BM8563::ByteToBcd2(uint8_t Value)
-{
+uint8_t BM8563::ByteToBcd2(uint8_t Value) {
     uint8_t bcdhigh = 0;
 
-    while (Value >= 10)
-    {
+    while (Value >= 10) {
         bcdhigh++;
         Value -= 10;
     }
@@ -143,10 +121,8 @@ uint8_t BM8563::ByteToBcd2(uint8_t Value)
     return ((uint8_t)(bcdhigh << 4) | Value);
 }
 
-void BM8563::getTime(rtc_time_type *RTC_TimeStruct)
-{
-
-    //if()
+void BM8563::getTime(rtc_time_type *RTC_TimeStruct) {
+    // if()
     uint8_t buf[3] = {0};
 
     _wire->beginTransmission(0x51);
@@ -154,24 +130,21 @@ void BM8563::getTime(rtc_time_type *RTC_TimeStruct)
     _wire->endTransmission(false);
     _wire->requestFrom(0x51, 3);
 
-    while (_wire->available())
-    {
-
+    while (_wire->available()) {
         buf[0] = _wire->read();
         buf[1] = _wire->read();
         buf[2] = _wire->read();
     }
 
-    RTC_TimeStruct->Seconds = Bcd2ToByte(buf[0] & 0x7f); //秒
-    RTC_TimeStruct->Minutes = Bcd2ToByte(buf[1] & 0x7f); //分
-    RTC_TimeStruct->Hours = Bcd2ToByte(buf[2] & 0x3f);   //时
+    RTC_TimeStruct->Seconds = Bcd2ToByte(buf[0] & 0x7f);  //秒
+    RTC_TimeStruct->Minutes = Bcd2ToByte(buf[1] & 0x7f);  //分
+    RTC_TimeStruct->Hours   = Bcd2ToByte(buf[2] & 0x3f);  //时
 }
 
-void BM8563::setTime(rtc_time_type *RTC_TimeStruct)
-{
-
-    if (RTC_TimeStruct == NULL)
-        return;
+int BM8563::setTime(rtc_time_type *RTC_TimeStruct) {
+    if (RTC_TimeStruct == NULL || RTC_TimeStruct->Hours > 24 ||
+        RTC_TimeStruct->Minutes > 60 || RTC_TimeStruct->Seconds > 60)
+        return 0;
 
     _wire->beginTransmission(0x51);
     _wire->write(0x02);
@@ -179,11 +152,10 @@ void BM8563::setTime(rtc_time_type *RTC_TimeStruct)
     _wire->write(ByteToBcd2(RTC_TimeStruct->Minutes));
     _wire->write(ByteToBcd2(RTC_TimeStruct->Hours));
     _wire->endTransmission();
+    return 1;
 }
 
-void BM8563::getDate(rtc_date_type *RTC_DateStruct)
-{
-
+void BM8563::getDate(rtc_date_type *RTC_DateStruct) {
     uint8_t buf[4] = {0};
 
     _wire->beginTransmission(0x51);
@@ -191,62 +163,51 @@ void BM8563::getDate(rtc_date_type *RTC_DateStruct)
     _wire->endTransmission(false);
     _wire->requestFrom(0x51, 4);
 
-    while (_wire->available())
-    {
-
+    while (_wire->available()) {
         buf[0] = _wire->read();
         buf[1] = _wire->read();
         buf[2] = _wire->read();
         buf[3] = _wire->read();
     }
 
-    RTC_DateStruct->Date = Bcd2ToByte(buf[0] & 0x3f);
+    RTC_DateStruct->Date    = Bcd2ToByte(buf[0] & 0x3f);
     RTC_DateStruct->WeekDay = Bcd2ToByte(buf[1] & 0x07);
-    RTC_DateStruct->Month = Bcd2ToByte(buf[2] & 0x1f);
+    RTC_DateStruct->Month   = Bcd2ToByte(buf[2] & 0x1f);
 
-    if (buf[2] & 0x80)
-    {
+    if (buf[2] & 0x80) {
         RTC_DateStruct->Year = 1900 + Bcd2ToByte(buf[3] & 0xff);
-    }
-    else
-    {
+    } else {
         RTC_DateStruct->Year = 2000 + Bcd2ToByte(buf[3] & 0xff);
     }
 }
 
-void BM8563::setDate(rtc_date_type *RTC_DateStruct)
-{
-
-    if (RTC_DateStruct == NULL)
-        return;
+int BM8563::setDate(rtc_date_type *RTC_DateStruct) {
+    if (RTC_DateStruct == NULL || RTC_DateStruct->WeekDay > 7 ||
+        RTC_DateStruct->Date > 31 || RTC_DateStruct->Month > 12)
+        return 0;
     _wire->beginTransmission(0x51);
     _wire->write(0x05);
     _wire->write(ByteToBcd2(RTC_DateStruct->Date));
     _wire->write(ByteToBcd2(RTC_DateStruct->WeekDay));
 
-    if (RTC_DateStruct->Year < 2000)
-    {
-
+    if (RTC_DateStruct->Year < 2000) {
         _wire->write(ByteToBcd2(RTC_DateStruct->Month) | 0x80);
         _wire->write(ByteToBcd2((uint8_t)(RTC_DateStruct->Year % 100)));
-    }
-    else
-    {
+    } else {
         /* code */
         _wire->write(ByteToBcd2(RTC_DateStruct->Month) | 0x00);
         _wire->write(ByteToBcd2((uint8_t)(RTC_DateStruct->Year % 100)));
     }
 
     _wire->endTransmission();
+    return 1;
 }
 
-int BM8563::setAlarmIRQ(int afterSeconds)
-{
+int BM8563::setAlarmIRQ(int afterSeconds) {
     uint8_t reg_value = 0;
-    reg_value = ReadReg(0x01);
+    reg_value         = ReadReg(0x01);
 
-    if (afterSeconds < 0)
-    {
+    if (afterSeconds < 0) {
         reg_value &= ~(1 << 0);
         writeReg(0x01, reg_value);
         reg_value = 0x03;
@@ -255,14 +216,11 @@ int BM8563::setAlarmIRQ(int afterSeconds)
     }
 
     uint8_t type_value = 2;
-    uint8_t div = 1;
-    if (afterSeconds > 255)
-    {
-        div = 60;
+    uint8_t div        = 1;
+    if (afterSeconds > 255) {
+        div        = 60;
         type_value = 0x83;
-    }
-    else
-    {
+    } else {
         type_value = 0x82;
     }
 
@@ -276,19 +234,16 @@ int BM8563::setAlarmIRQ(int afterSeconds)
     return afterSeconds * div;
 }
 
-int BM8563::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct)
-{
+int BM8563::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct) {
     uint8_t irq_enable = false;
     uint8_t out_buf[4] = {0x80, 0x80, 0x80, 0x80};
 
-    if (RTC_TimeStruct.Minutes >= 0)
-    {
+    if (RTC_TimeStruct.Minutes >= 0) {
         irq_enable = true;
         out_buf[0] = ByteToBcd2(RTC_TimeStruct.Minutes) & 0x7f;
     }
 
-    if (RTC_TimeStruct.Hours >= 0)
-    {
+    if (RTC_TimeStruct.Hours >= 0) {
         irq_enable = true;
         out_buf[1] = ByteToBcd2(RTC_TimeStruct.Hours) & 0x3f;
     }
@@ -298,17 +253,13 @@ int BM8563::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct)
 
     uint8_t reg_value = ReadReg(0x01);
 
-    if (irq_enable)
-    {
+    if (irq_enable) {
         reg_value |= (1 << 1);
-    }
-    else
-    {
+    } else {
         reg_value &= ~(1 << 1);
     }
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         writeReg(0x09 + i, out_buf[i]);
     }
     writeReg(0x01, reg_value);
@@ -316,48 +267,40 @@ int BM8563::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct)
     return irq_enable ? 1 : 0;
 }
 
-int BM8563::setAlarmIRQ(const rtc_date_type &RTC_DateStruct, const rtc_time_type &RTC_TimeStruct)
-{
+int BM8563::setAlarmIRQ(const rtc_date_type &RTC_DateStruct,
+                        const rtc_time_type &RTC_TimeStruct) {
     uint8_t irq_enable = false;
     uint8_t out_buf[4] = {0x80, 0x80, 0x80, 0x80};
 
-    if (RTC_TimeStruct.Minutes >= 0)
-    {
+    if (RTC_TimeStruct.Minutes >= 0) {
         irq_enable = true;
         out_buf[0] = ByteToBcd2(RTC_TimeStruct.Minutes) & 0x7f;
     }
 
-    if (RTC_TimeStruct.Hours >= 0)
-    {
+    if (RTC_TimeStruct.Hours >= 0) {
         irq_enable = true;
         out_buf[1] = ByteToBcd2(RTC_TimeStruct.Hours) & 0x3f;
     }
 
-    if (RTC_DateStruct.Date >= 0)
-    {
+    if (RTC_DateStruct.Date >= 0) {
         irq_enable = true;
         out_buf[2] = ByteToBcd2(RTC_DateStruct.Date) & 0x3f;
     }
 
-    if (RTC_DateStruct.WeekDay >= 0)
-    {
+    if (RTC_DateStruct.WeekDay >= 0) {
         irq_enable = true;
         out_buf[3] = ByteToBcd2(RTC_DateStruct.WeekDay) & 0x07;
     }
 
     uint8_t reg_value = ReadReg(0x01);
 
-    if (irq_enable)
-    {
+    if (irq_enable) {
         reg_value |= (1 << 1);
-    }
-    else
-    {
+    } else {
         reg_value &= ~(1 << 1);
     }
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         writeReg(0x09 + i, out_buf[i]);
     }
     writeReg(0x01, reg_value);
@@ -365,13 +308,11 @@ int BM8563::setAlarmIRQ(const rtc_date_type &RTC_DateStruct, const rtc_time_type
     return irq_enable ? 1 : 0;
 }
 
-void BM8563::clearIRQ()
-{
+void BM8563::clearIRQ() {
     uint8_t data = ReadReg(0x01);
     writeReg(0x01, data & 0xf3);
 }
-void BM8563::disableIRQ()
-{
+void BM8563::disableIRQ() {
     clearIRQ();
     uint8_t data = ReadReg(0x01);
     writeReg(0x01, data & 0xfC);
