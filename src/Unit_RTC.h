@@ -1,8 +1,15 @@
-#ifndef __M5_BM8563_RTC_H__
-#define __M5_BM8563_RTC_H__
+/*!
+ * @brief A programmable real-time clock module From M5Stack
+ * @copyright Copyright (c) 2022 by M5Stack[https://m5stack.com]
+ *
+ * @Links [Unit RTC](https://docs.m5stack.com/en/unit/rtc)
+ * @version  V0.0.1
+ * @date  2022-07-15
+ */
+#ifndef _Unit_RTC_H__
+#define _Unit_RTC_H__
 
 #include <Wire.h>
-
 #include "Arduino.h"
 
 #define DEVICE_ADDR 0x51
@@ -12,7 +19,8 @@ struct rtc_time_type {
     uint8_t Minutes;
     uint8_t Seconds;
     rtc_time_type(uint8_t hours = 0, uint8_t minutes = 0, uint8_t seconds = 0)
-        : Hours{hours}, Minutes{minutes}, Seconds{seconds} {}
+        : Hours{hours}, Minutes{minutes}, Seconds{seconds} {
+    }
 };
 
 struct rtc_date_type {
@@ -22,10 +30,11 @@ struct rtc_date_type {
     uint8_t WeekDay;
     rtc_date_type(uint16_t year = 2000, uint8_t month = 0, uint8_t date = 0,
                   uint8_t weekDay = 0)
-        : Year{year}, Month{month}, Date{date}, WeekDay{weekDay} {}
+        : Year{year}, Month{month}, Date{date}, WeekDay{weekDay} {
+    }
 };
 
-class BM8563 {
+class Unit_RTC {
    private:
     void Bcd2asc(void);
     void DataMask();
@@ -44,8 +53,8 @@ class BM8563 {
     TwoWire *_wire;
 
    public:
-    BM8563();
-    BM8563(uint8_t addr);
+    Unit_RTC();
+    Unit_RTC(uint8_t addr);
     void begin();
     void begin(TwoWire *wire);
     void begin(TwoWire *wire, uint8_t scl, uint8_t sda, uint32_t i2c_freq);
