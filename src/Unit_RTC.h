@@ -3,8 +3,8 @@
  * @copyright Copyright (c) 2022 by M5Stack[https://m5stack.com]
  *
  * @Links [Unit RTC](https://docs.m5stack.com/en/unit/rtc)
- * @version  V0.0.1
- * @date  2022-07-15
+ * @version  V0.0.2
+ * @date  2022-07-29
  */
 #ifndef _Unit_RTC_H__
 #define _Unit_RTC_H__
