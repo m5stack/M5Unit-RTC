@@ -14,9 +14,9 @@
 */
 
 #include "M5Core2.h"
-#include "M5_BM8563.h"
+#include "Unit_RTC.h"
 
-BM8563 RTC;
+Unit_RTC RTC;
 
 rtc_time_type RTCtime;
 rtc_date_type RTCdate;
