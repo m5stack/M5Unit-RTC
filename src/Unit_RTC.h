@@ -6,6 +6,10 @@
  * @version  V0.0.2
  * @date  2022-07-29
  */
+#if defined(M5_UNIT_UNIFIED_RTC_HPP)
+#error "DO NOT USE it at the same time as M5UnitUnified libraries"
+#endif
+
 #ifndef _Unit_RTC_H__
 #define _Unit_RTC_H__
 
