@@ -433,7 +433,7 @@ bool UnitPCF8563::readTimerControl(bool& enabled, pcf8563::TimerClock& clock)
     if (!readRegister8(TIMER_CONTROL_REG, val, 0)) {
         return false;
     }
-    enabled = (val & 0x80) != 0;                              // TE bit
+    enabled = (val & 0x80) != 0;                             // TE bit
     clock   = static_cast<pcf8563::TimerClock>(val & 0x03);  // TD bits
     return true;
 }
@@ -604,7 +604,7 @@ void UnitPCF8563::setSystemTimeFromRtc(struct timezone* tz)
     }
     struct tm t = dt.to_tm();
 
-    struct timeval tv {};
+    struct timeval tv{};
     tv.tv_sec = mktime(&t);
     settimeofday(&tv, tz);
 }

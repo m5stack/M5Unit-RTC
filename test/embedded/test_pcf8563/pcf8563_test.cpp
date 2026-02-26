@@ -26,8 +26,7 @@ protected:
     {
         // ESP32-C6 boards (NessoN1, NanoC6) have 1 hardware I2C used by M5Unified; use HAL
         auto board = M5.getBoard();
-        if (board == m5::board_t::board_ArduinoNessoN1 || board == m5::board_t::board_M5NanoC6
-            || is_using_hal()) {
+        if (board == m5::board_t::board_ArduinoNessoN1 || board == m5::board_t::board_M5NanoC6 || is_using_hal()) {
             auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
             auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
             if (board == m5::board_t::board_ArduinoNessoN1) {
@@ -144,7 +143,7 @@ TEST_P(TestPCF8563, DateTime)
     // --- DateTime round-trip (struct tm) ---
     {
         SCOPED_TRACE("DateTime struct tm");
-        struct tm wt {};
+        struct tm wt{};
         wt.tm_year = 126;  // 2026
         wt.tm_mon  = 1;    // February
         wt.tm_mday = 26;
@@ -154,7 +153,7 @@ TEST_P(TestPCF8563, DateTime)
         wt.tm_sec  = 33;
         EXPECT_TRUE(unit->writeDateTime(wt));
 
-        struct tm rt {};
+        struct tm rt{};
         EXPECT_TRUE(unit->readDateTime(rt));
         EXPECT_EQ(rt.tm_year, 126);
         EXPECT_EQ(rt.tm_mon, 1);
@@ -436,7 +435,7 @@ TEST_P(TestPCF8563, CompatAPI)
         SCOPED_TRACE("setAlarmIRQ date+time");
         m5::rtc_date_t ad = {2000, 1, 15, 3};
         m5::rtc_time_t at = {12, 30, -1};
-        int result         = unit->setAlarmIRQ(ad, at);
+        int result        = unit->setAlarmIRQ(ad, at);
         EXPECT_EQ(result, 1);
 
         // Verify via readAlarm
@@ -695,7 +694,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         // setAlarmIRQ (same values)
         m5::rtc_date_t cd = {2000, 1, 25, -1};
         m5::rtc_time_t ct = {14, 30, -1};
-        int result         = unit->setAlarmIRQ(cd, ct);
+        int result        = unit->setAlarmIRQ(cd, ct);
         EXPECT_EQ(result, 1);
 
         rtc_time_t rt2{};

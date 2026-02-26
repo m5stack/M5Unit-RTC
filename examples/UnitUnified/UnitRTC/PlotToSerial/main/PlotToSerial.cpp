@@ -21,7 +21,7 @@ namespace {
 // ==============================================================
 // NOTICE: Set your WiFi credentials and timezone before building
 // ==============================================================
-const char* WIFI_SSID = "";   // Your WiFi SSID
+const char* WIFI_SSID = "";  // Your WiFi SSID
 const char* WIFI_PASS = "";  // Your WiFi password
 // POSIX timezone string (default: JST-9 = UTC+9, no DST)
 const char* YOUR_TIMEZONE = "JST-9";
@@ -145,8 +145,7 @@ bool sync_ntp_to_rtc()
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
 
-    struct tm t {
-    };
+    struct tm t{};
     if (!getLocalTime(&t, 10000)) {
         M5_LOGE("Failed to get NTP time");
         display_printf("\nNTP FAILED\n");
