@@ -23,10 +23,11 @@ rtc_date_type RTCdate;
 
 char str_buffer[64];
 
-void setup() {
+void setup()
+{
     M5.begin(true, false, true);  // Init M5Atom.  初始化M5Atom
     Serial.print("RTC");
-    RTC.begin();  // Example Initialize the RTC clock.  初始化RTC时钟
+    RTC.begin();           // Example Initialize the RTC clock.  初始化RTC时钟
     RTCtime.Hours   = 14;  // Set the RTC clock time.  设置RTC时钟时间
     RTCtime.Minutes = 40;
     RTCtime.Seconds = 5;
@@ -43,12 +44,12 @@ void setup() {
     M5.dis.fillpix(0x00ff00);
 }
 
-void loop() {
+void loop()
+{
     RTC.getTime(&RTCtime);  // To get the time.  获取时间
     RTC.getDate(&RTCdate);  // Get the date.  获取日期
-    Serial.printf("RTC Time Now is \n%02d:%02d:%02d\n", RTCtime.Hours,
-                  RTCtime.Minutes, RTCtime.Seconds);
-    Serial.printf("RTC Date Now is \n%02d:%02d:%02d WeekDay:%02d\n",
-                  RTCdate.Year, RTCdate.Month, RTCdate.Date, RTCdate.WeekDay);
+    Serial.printf("RTC Time Now is \n%02d:%02d:%02d\n", RTCtime.Hours, RTCtime.Minutes, RTCtime.Seconds);
+    Serial.printf("RTC Date Now is \n%02d:%02d:%02d WeekDay:%02d\n", RTCdate.Year, RTCdate.Month, RTCdate.Date,
+                  RTCdate.WeekDay);
     delay(1000);
 }
