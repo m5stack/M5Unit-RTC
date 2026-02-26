@@ -15,8 +15,7 @@ using namespace m5::unit::pcf8563;
 // rtc_time_t
 // ============================================================
 
-class RtcTimeTest : public ::testing::Test {
-};
+class RtcTimeTest : public ::testing::Test {};
 
 TEST_F(RtcTimeTest, DefaultConstructor)
 {
@@ -36,7 +35,7 @@ TEST_F(RtcTimeTest, ParameterizedConstructor)
 
 TEST_F(RtcTimeTest, ConstructFromTm)
 {
-    struct tm src {};
+    struct tm src{};
     src.tm_hour = 23;
     src.tm_min  = 59;
     src.tm_sec  = 58;
@@ -49,7 +48,7 @@ TEST_F(RtcTimeTest, ConstructFromTm)
 
 TEST_F(RtcTimeTest, FromTm)
 {
-    struct tm src {};
+    struct tm src{};
     src.tm_hour = 8;
     src.tm_min  = 15;
     src.tm_sec  = 0;
@@ -72,7 +71,7 @@ TEST_F(RtcTimeTest, ToTm)
 TEST_F(RtcTimeTest, RoundTripTm)
 {
     rtc_time_t original(10, 25, 50);
-    struct tm mid = original.to_tm();
+    struct tm mid   = original.to_tm();
     rtc_time_t back = rtc_time_t::from_tm(mid);
     EXPECT_EQ(original, back);
 }
@@ -145,8 +144,7 @@ TEST_F(RtcTimeTest, ComparisonEdgeCases)
 // rtc_date_t
 // ============================================================
 
-class RtcDateTest : public ::testing::Test {
-};
+class RtcDateTest : public ::testing::Test {};
 
 TEST_F(RtcDateTest, DefaultConstructor)
 {
@@ -168,11 +166,11 @@ TEST_F(RtcDateTest, ParameterizedConstructor)
 
 TEST_F(RtcDateTest, ConstructFromTm)
 {
-    struct tm src {};
+    struct tm src{};
     src.tm_year = 126;  // 2026
     src.tm_mon  = 1;    // February
     src.tm_mday = 26;
-    src.tm_wday = 4;    // Thursday
+    src.tm_wday = 4;  // Thursday
 
     rtc_date_t d(src);
     EXPECT_EQ(d.year, 2026);
@@ -183,9 +181,9 @@ TEST_F(RtcDateTest, ConstructFromTm)
 
 TEST_F(RtcDateTest, FromTm)
 {
-    struct tm src {};
-    src.tm_year = 99;   // 1999
-    src.tm_mon  = 11;   // December
+    struct tm src{};
+    src.tm_year = 99;  // 1999
+    src.tm_mon  = 11;  // December
     src.tm_mday = 31;
     src.tm_wday = 5;
 
@@ -209,7 +207,7 @@ TEST_F(RtcDateTest, ToTm)
 TEST_F(RtcDateTest, RoundTripTm)
 {
     rtc_date_t original(2026, 6, 15, 1);
-    struct tm mid = original.to_tm();
+    struct tm mid   = original.to_tm();
     rtc_date_t back = rtc_date_t::from_tm(mid);
     EXPECT_EQ(original, back);
     EXPECT_EQ(back.weekDay, 1);
@@ -280,8 +278,7 @@ TEST_F(RtcDateTest, GreaterEqual)
 // rtc_datetime_t
 // ============================================================
 
-class RtcDateTimeTest : public ::testing::Test {
-};
+class RtcDateTimeTest : public ::testing::Test {};
 
 TEST_F(RtcDateTimeTest, DefaultConstructor)
 {
@@ -314,7 +311,7 @@ TEST_F(RtcDateTimeTest, ComponentConstructor)
 
 TEST_F(RtcDateTimeTest, ConstructFromTm)
 {
-    struct tm src {};
+    struct tm src{};
     src.tm_year = 126;  // 2026
     src.tm_mon  = 1;    // February
     src.tm_mday = 26;
@@ -352,7 +349,7 @@ TEST_F(RtcDateTimeTest, ToTm)
 
 TEST_F(RtcDateTimeTest, FromTm)
 {
-    struct tm src {};
+    struct tm src{};
     src.tm_year = 126;
     src.tm_mon  = 1;
     src.tm_mday = 26;
@@ -368,7 +365,7 @@ TEST_F(RtcDateTimeTest, FromTm)
 
 TEST_F(RtcDateTimeTest, AssignFromTm)
 {
-    struct tm src {};
+    struct tm src{};
     src.tm_year = 126;
     src.tm_mon  = 1;
     src.tm_mday = 26;
