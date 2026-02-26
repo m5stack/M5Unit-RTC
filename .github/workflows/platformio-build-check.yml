@@ -1,0 +1,104 @@
+name: Build(platformio)
+
+on:
+  push:
+    tags-ignore:
+      - '*.*.*'
+      - 'v*.*.*'
+    branches:
+      - '*'
+    paths:
+      - 'src/unit/**.cpp'
+      - 'src/unit/**.hpp'
+      - 'src/unit/**.h'
+      - 'src/unit/**.c'
+      - 'examples/UnitUnified/**.ino'
+      - 'examples/UnitUnified/**.cpp'
+      - 'examples/UnitUnified/**.hpp'
+      - 'examples/UnitUnified/**.h'
+      - 'examples/UnitUnified/**.c'
+      - '**/platformio-build-check.yml'
+      - '**platformio.ini'
+  pull_request:
+    paths:
+      - 'src/unit/**.cpp'
+      - 'src/unit/**.hpp'
+      - 'src/unit/**.h'
+      - 'src/unit/**.c'
+      - 'examples/UnitUnified/**.ino'
+      - 'examples/UnitUnified/**.cpp'
+      - 'examples/UnitUnified/**.hpp'
+      - 'examples/UnitUnified/**.h'
+      - 'examples/UnitUnified/**.c'
+      - '**/platformio-build-check.yml'
+      - '**platformio.ini'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: UnitRTC:${{ matrix.example }}@${{ matrix.board }}:${{ matrix.framework }}:${{ matrix.espressif32 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+
+      matrix:
+        example:
+          - PlotToSerial
+
+        board:
+          - Core
+          - Core2
+          - CoreS3
+          - Fire
+          - StampS3
+          - Dial
+          - Atom
+          - AtomS3
+          - AtomS3R
+          - NanoC6
+          - StickCPlus
+          - StickCPlus2
+          - StickS3
+          - Paper
+          - CoreInk
+          - Cardputer
+          - Tab5
+          - NessoN1
+
+        framework:
+          - Arduino
+
+        espressif32:
+          - latest
+
+        include:
+          - example: AlarmNotify
+            board: Core
+            framework: Arduino
+            espressif32: latest
+          - example: PeriodicTimer
+            board: Core
+            framework: Arduino
+            espressif32: latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build examples
+        uses: karniv00l/platformio-run-action@v1
+        with:
+          environments: UnitRTC_${{ matrix.example }}_${{ matrix.board }}_${{ matrix.framework }}_${{ matrix.espressif32 }}
+          project-dir: "./"
+          project-conf: "./platformio.ini"
