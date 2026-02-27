@@ -115,11 +115,18 @@ void setup()
     cfg.on_alarm = on_alarm;
     unit.config(cfg);
 
-    // ESP32-C6 boards have only 1 hardware I2C (Wire), used by M5Unified internally.
-    // Use SoftwareI2C via M5HAL for the GROVE port to avoid bus conflict.
+    // NessoN1 / NanoC6: Arduino Wire (I2C_NUM_0) cannot be used for GROVE port.
+    // - NessoN1: Wire is used by M5Unified In_I2C for internal devices (IOExpander etc.).
+    //   Wire1 exists but is reserved for HatPort — cannot be used for GROVE.
+    //   Reconfiguring Wire to GROVE pins breaks In_I2C, causing ESP_ERR_INVALID_STATE in M5.update().
+    // - NanoC6: M5Unified In_I2C is disabled (no internal I2C devices), but Ex_I2C.setPort() registers
+    //   m5gfx::i2c on I2C_NUM_0 for GROVE pins (1/2). Using Wire.begin() on the same port creates a
+    //   dual-driver conflict (m5gfx::i2c vs Arduino Wire), causing NACK errors on button press timing.
+    // Solution: Use SoftwareI2C via M5HAL (bit-banging) for the GROVE port on both boards.
     if (board == m5::board_t::board_ArduinoNessoN1 || board == m5::board_t::board_M5NanoC6) {
         auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
         auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
+        // NessoN1: GROVE is on port_b (GPIO 5/4), not port_a (which maps to Wire pins 8/10)
         if (board == m5::board_t::board_ArduinoNessoN1) {
             pin_num_sda = M5.getPin(m5::pin_name_t::port_b_out);
             pin_num_scl = M5.getPin(m5::pin_name_t::port_b_in);
