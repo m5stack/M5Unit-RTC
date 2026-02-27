@@ -155,7 +155,9 @@ void setup()
         unit.readDateTime(dt);
         struct tm gmt = dt.to_tm();
         time_t t      = mktime(&gmt);
-        struct timeval tv{t, 0};
+        struct timeval tv {
+            t, 0
+        };
         settimeofday(&tv, nullptr);
         setenv("TZ", YOUR_TIMEZONE, 1);
         tzset();
