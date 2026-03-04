@@ -18,31 +18,8 @@ using namespace m5::unit::googletest;
 using namespace m5::unit;
 using namespace m5::unit::pcf8563;
 
-const ::testing::Environment* global_fixture = ::testing::AddGlobalTestEnvironment(new GlobalFixture<400000U>());
-
-class TestPCF8563 : public ComponentTestBase<UnitPCF8563, bool> {
+class TestPCF8563 : public I2CComponentTestBase<UnitPCF8563> {
 protected:
-    virtual bool begin() override
-    {
-        // ESP32-C6 boards (NessoN1, NanoC6) have 1 hardware I2C used by M5Unified; use HAL
-        auto board = M5.getBoard();
-        if (board == m5::board_t::board_ArduinoNessoN1 || board == m5::board_t::board_M5NanoC6 || is_using_hal()) {
-            auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
-            auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
-            if (board == m5::board_t::board_ArduinoNessoN1) {
-                pin_num_sda = M5.getPin(m5::pin_name_t::port_b_out);
-                pin_num_scl = M5.getPin(m5::pin_name_t::port_b_in);
-            }
-
-            m5::hal::bus::I2CBusConfig i2c_cfg;
-            i2c_cfg.pin_sda = m5::hal::gpio::getPin(pin_num_sda);
-            i2c_cfg.pin_scl = m5::hal::gpio::getPin(pin_num_scl);
-            auto i2c_bus    = m5::hal::bus::i2c::getBus(i2c_cfg);
-            return Units.add(*unit, i2c_bus ? i2c_bus.value() : nullptr) && Units.begin();
-        }
-
-        return Units.add(*unit, Wire) && Units.begin();
-    }
     virtual UnitPCF8563* get_instance() override
     {
         auto ptr = new m5::unit::UnitPCF8563();
@@ -52,19 +29,13 @@ protected:
         }
         return ptr;
     }
-    virtual bool is_using_hal() const override
-    {
-        return GetParam();
-    }
 };
-
-INSTANTIATE_TEST_SUITE_P(ParamValues, TestPCF8563, ::testing::Values(false));
 
 // ============================================================
 // DateTime
 // ============================================================
 
-TEST_P(TestPCF8563, DateTime)
+TEST_F(TestPCF8563, DateTime)
 {
     SCOPED_TRACE(ustr);
 
@@ -79,6 +50,7 @@ TEST_P(TestPCF8563, DateTime)
             auto s = m5::utility::formatString("Time %d:%d:%d", wt.hours, wt.minutes, wt.seconds);
             SCOPED_TRACE(s);
             EXPECT_TRUE(unit->writeTime(wt));
+    
             rtc_time_t rt{};
             EXPECT_TRUE(unit->readTime(rt));
             EXPECT_EQ(rt.hours, wt.hours);
@@ -92,6 +64,7 @@ TEST_P(TestPCF8563, DateTime)
      {SCOPED_TRACE("Date 2026-02-26");
     rtc_date_t wd(2026, 2, 26, 4);
     EXPECT_TRUE(unit->writeDate(wd));
+
     rtc_date_t rd{};
     EXPECT_TRUE(unit->readDate(rd));
     EXPECT_EQ(rd.year, 2026);
@@ -104,6 +77,7 @@ TEST_P(TestPCF8563, DateTime)
     SCOPED_TRACE("Date 1999-12-31");
     rtc_date_t wd(1999, 12, 31, 5);
     EXPECT_TRUE(unit->writeDate(wd));
+
     rtc_date_t rd{};
     EXPECT_TRUE(unit->readDate(rd));
     EXPECT_EQ(rd.year, 1999);
@@ -115,6 +89,7 @@ TEST_P(TestPCF8563, DateTime)
     SCOPED_TRACE("Date 2000-01-01");
     rtc_date_t wd(2000, 1, 1, 6);
     EXPECT_TRUE(unit->writeDate(wd));
+
     rtc_date_t rd{};
     EXPECT_TRUE(unit->readDate(rd));
     EXPECT_EQ(rd.year, 2000);
@@ -128,6 +103,7 @@ TEST_P(TestPCF8563, DateTime)
     SCOPED_TRACE("DateTime rtc_datetime_t");
     rtc_datetime_t wdt(rtc_date_t(2026, 6, 15, 1), rtc_time_t(8, 30, 0));
     EXPECT_TRUE(unit->writeDateTime(wdt));
+
     rtc_datetime_t rdt{};
     EXPECT_TRUE(unit->readDateTime(rdt));
     EXPECT_EQ(rdt.date.year, 2026);
@@ -152,6 +128,7 @@ TEST_P(TestPCF8563, DateTime)
     wt.tm_sec  = 33;
     EXPECT_TRUE(unit->writeDateTime(wt));
 
+
     struct tm rt {
     };
     EXPECT_TRUE(unit->readDateTime(rt));
@@ -168,7 +145,7 @@ TEST_P(TestPCF8563, DateTime)
 // Alarm
 // ============================================================
 
-TEST_P(TestPCF8563, Alarm)
+TEST_F(TestPCF8563, Alarm)
 {
     SCOPED_TRACE(ustr);
 
@@ -178,6 +155,7 @@ TEST_P(TestPCF8563, Alarm)
         rtc_time_t at(12, 30, -1);  // seconds always -1
         rtc_date_t ad(2000, 1, 15, 3);
         EXPECT_TRUE(unit->writeAlarm(at, ad));
+
 
         rtc_time_t rt{};
         rtc_date_t rd{};
@@ -196,6 +174,7 @@ TEST_P(TestPCF8563, Alarm)
         rtc_date_t ad(2000, 1, -1, 5);
         EXPECT_TRUE(unit->writeAlarm(at, ad));
 
+
         rtc_time_t rt{};
         rtc_date_t rd{};
         EXPECT_TRUE(unit->readAlarm(rt, rd));
@@ -212,6 +191,7 @@ TEST_P(TestPCF8563, Alarm)
         rtc_date_t ad(2000, 1, -1, -1);
         EXPECT_TRUE(unit->writeAlarm(at, ad));
 
+
         rtc_time_t rt{};
         rtc_date_t rd{};
         EXPECT_TRUE(unit->readAlarm(rt, rd));
@@ -225,11 +205,13 @@ TEST_P(TestPCF8563, Alarm)
     {
         SCOPED_TRACE("AlarmInterrupt");
         EXPECT_TRUE(unit->writeAlarmInterrupt(true));
+
         bool enabled{};
         EXPECT_TRUE(unit->readAlarmInterrupt(enabled));
         EXPECT_TRUE(enabled);
 
         EXPECT_TRUE(unit->writeAlarmInterrupt(false));
+
         EXPECT_TRUE(unit->readAlarmInterrupt(enabled));
         EXPECT_FALSE(enabled);
     }
@@ -238,6 +220,7 @@ TEST_P(TestPCF8563, Alarm)
     {
         SCOPED_TRACE("ClearAlarmFlag");
         EXPECT_TRUE(unit->clearAlarmFlag());
+
         bool fired{};
         EXPECT_TRUE(unit->readAlarmFlag(fired));
         EXPECT_FALSE(fired);
@@ -248,7 +231,7 @@ TEST_P(TestPCF8563, Alarm)
 // Timer
 // ============================================================
 
-TEST_P(TestPCF8563, Timer)
+TEST_F(TestPCF8563, Timer)
 {
     SCOPED_TRACE(ustr);
 
@@ -259,6 +242,7 @@ TEST_P(TestPCF8563, Timer)
             auto s = m5::utility::formatString("TimerClock %u", static_cast<unsigned>(clk));
             SCOPED_TRACE(s);
             EXPECT_TRUE(unit->writeTimerControl(true, clk));
+    
 
             bool enabled{};
             TimerClock read_clk{};
@@ -272,6 +256,7 @@ TEST_P(TestPCF8563, Timer)
     {
         SCOPED_TRACE("TimerControl enabled=false");
         EXPECT_TRUE(unit->writeTimerControl(false, TimerClock::Hz1));
+
         bool enabled{};
         TimerClock clk{};
         EXPECT_TRUE(unit->readTimerControl(enabled, clk));
@@ -295,6 +280,7 @@ TEST_P(TestPCF8563, Timer)
             auto s = m5::utility::formatString("TimerValue %u", v);
             SCOPED_TRACE(s);
             EXPECT_TRUE(unit->writeTimerValue(v));
+    
 
             uint8_t read_v{};
             EXPECT_TRUE(unit->readTimerValue(read_v));
@@ -309,11 +295,13 @@ TEST_P(TestPCF8563, Timer)
     {
         SCOPED_TRACE("TimerInterrupt");
         EXPECT_TRUE(unit->writeTimerInterrupt(true));
+
         bool enabled{};
         EXPECT_TRUE(unit->readTimerInterrupt(enabled));
         EXPECT_TRUE(enabled);
 
         EXPECT_TRUE(unit->writeTimerInterrupt(false));
+
         EXPECT_TRUE(unit->readTimerInterrupt(enabled));
         EXPECT_FALSE(enabled);
     }
@@ -322,6 +310,7 @@ TEST_P(TestPCF8563, Timer)
     {
         SCOPED_TRACE("ClearTimerFlag");
         EXPECT_TRUE(unit->clearTimerFlag());
+
         bool fired{};
         EXPECT_TRUE(unit->readTimerFlag(fired));
         EXPECT_FALSE(fired);
@@ -332,7 +321,7 @@ TEST_P(TestPCF8563, Timer)
 // Clock Control
 // ============================================================
 
-TEST_P(TestPCF8563, ClockControl)
+TEST_F(TestPCF8563, ClockControl)
 {
     SCOPED_TRACE(ustr);
 
@@ -340,11 +329,13 @@ TEST_P(TestPCF8563, ClockControl)
     {
         SCOPED_TRACE("Stop");
         EXPECT_TRUE(unit->writeStop(true));
+
         bool stopped{};
         EXPECT_TRUE(unit->readStop(stopped));
         EXPECT_TRUE(stopped);
 
         EXPECT_TRUE(unit->writeStop(false));
+
         EXPECT_TRUE(unit->readStop(stopped));
         EXPECT_FALSE(stopped);
     }
@@ -354,6 +345,7 @@ TEST_P(TestPCF8563, ClockControl)
         SCOPED_TRACE("Stop preserves time");
         pcf8563::rtc_time_t wt(12, 0, 0);
         EXPECT_TRUE(unit->writeTime(wt));
+
 
         EXPECT_TRUE(unit->writeStop(true));
         m5::utility::delay(2000);  // wait 2 seconds while stopped
@@ -371,7 +363,7 @@ TEST_P(TestPCF8563, ClockControl)
 // Status
 // ============================================================
 
-TEST_P(TestPCF8563, Status)
+TEST_F(TestPCF8563, Status)
 {
     SCOPED_TRACE(ustr);
 
@@ -384,7 +376,7 @@ TEST_P(TestPCF8563, Status)
 // M5Unified Compat API
 // ============================================================
 
-TEST_P(TestPCF8563, CompatAPI)
+TEST_F(TestPCF8563, CompatAPI)
 {
     SCOPED_TRACE(ustr);
 
@@ -395,6 +387,7 @@ TEST_P(TestPCF8563, CompatAPI)
         wdt.date = {2026, 2, 26, 4};
         wdt.time = {14, 20, 33};
         EXPECT_TRUE(unit->setDateTime(wdt));
+
 
         m5::rtc_datetime_t rdt;
         EXPECT_TRUE(unit->getDateTime(&rdt));
@@ -412,6 +405,7 @@ TEST_P(TestPCF8563, CompatAPI)
         m5::rtc_time_t wt = {8, 15, 0};
         EXPECT_TRUE(unit->setTime(wt));
 
+
         m5::rtc_time_t rt = unit->getTime();
         EXPECT_EQ(rt.hours, 8);
         EXPECT_EQ(rt.minutes, 15);
@@ -423,6 +417,7 @@ TEST_P(TestPCF8563, CompatAPI)
         SCOPED_TRACE("setDate/getDate");
         m5::rtc_date_t wd = {2026, 6, 15, 1};
         EXPECT_TRUE(unit->setDate(wd));
+
 
         m5::rtc_date_t rd = unit->getDate();
         EXPECT_EQ(rd.year, 2026);
@@ -437,6 +432,7 @@ TEST_P(TestPCF8563, CompatAPI)
         m5::rtc_time_t at = {12, 30, -1};
         int result        = unit->setAlarmIRQ(ad, at);
         EXPECT_EQ(result, 1);
+
 
         // Verify via readAlarm
         pcf8563::rtc_time_t rt{};
@@ -453,6 +449,7 @@ TEST_P(TestPCF8563, CompatAPI)
         SCOPED_TRACE("setTimerIRQ");
         uint32_t actual = unit->setTimerIRQ(5000);  // 5 seconds
         EXPECT_GT(actual, 0U);
+
 
         // Verify timer is enabled
         bool enabled{};
@@ -471,6 +468,7 @@ TEST_P(TestPCF8563, CompatAPI)
         uint32_t actual = unit->setTimerIRQ(0);
         EXPECT_EQ(actual, 0U);
 
+
         bool enabled{};
         TimerClock clk{};
         EXPECT_TRUE(unit->readTimerControl(enabled, clk));
@@ -485,6 +483,7 @@ TEST_P(TestPCF8563, CompatAPI)
         unit->writeAlarmInterrupt(true);
 
         unit->disableIRQ();
+
 
         // Verify CONTROL2 bits are cleared
         bool alarm_ie{};
@@ -508,7 +507,7 @@ TEST_P(TestPCF8563, CompatAPI)
 // M5Unified Compat Cross-API Consistency
 // ============================================================
 
-TEST_P(TestPCF8563, CompatCrossAPI)
+TEST_F(TestPCF8563, CompatCrossAPI)
 {
     SCOPED_TRACE(ustr);
 
@@ -517,6 +516,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
         SCOPED_TRACE("WriteUnified_ReadCompat DateTime");
         rtc_datetime_t wdt(rtc_date_t(2026, 3, 15, 0), rtc_time_t(10, 20, 30));
         EXPECT_TRUE(unit->writeDateTime(wdt));
+
 
         m5::rtc_datetime_t rdt;
         EXPECT_TRUE(unit->getDateTime(&rdt));
@@ -536,6 +536,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
         wdt.time = {23, 59, 50};
         EXPECT_TRUE(unit->setDateTime(wdt));
 
+
         rtc_datetime_t rdt{};
         EXPECT_TRUE(unit->readDateTime(rdt));
         EXPECT_EQ(rdt.date.year, 2025);
@@ -552,6 +553,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
         rtc_time_t wt(7, 45, 12);
         EXPECT_TRUE(unit->writeTime(wt));
 
+
         m5::rtc_time_t rt = unit->getTime();
         EXPECT_EQ(rt.hours, 7);
         EXPECT_EQ(rt.minutes, 45);
@@ -563,6 +565,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
         SCOPED_TRACE("WriteCompat_ReadUnified Time");
         m5::rtc_time_t wt = {18, 30, 55};
         EXPECT_TRUE(unit->setTime(wt));
+
 
         rtc_time_t rt{};
         EXPECT_TRUE(unit->readTime(rt));
@@ -577,6 +580,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
         rtc_date_t wd(2026, 7, 4, 6);
         EXPECT_TRUE(unit->writeDate(wd));
 
+
         m5::rtc_date_t rd = unit->getDate();
         EXPECT_EQ(rd.year, 2026);
         EXPECT_EQ(rd.month, 7);
@@ -588,6 +592,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
         SCOPED_TRACE("WriteCompat_ReadUnified Date");
         m5::rtc_date_t wd = {2024, 2, 29, 4};
         EXPECT_TRUE(unit->setDate(wd));
+
 
         rtc_date_t rd{};
         EXPECT_TRUE(unit->readDate(rd));
@@ -601,7 +606,7 @@ TEST_P(TestPCF8563, CompatCrossAPI)
 // M5Unified Compat Alarm/Timer
 // ============================================================
 
-TEST_P(TestPCF8563, CompatAlarmTimer)
+TEST_F(TestPCF8563, CompatAlarmTimer)
 {
     SCOPED_TRACE(ustr);
 
@@ -610,6 +615,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         SCOPED_TRACE("setAlarmIRQ(int) positive");
         int actual = unit->setAlarmIRQ(10);
         EXPECT_GT(actual, 0);
+
 
         // Timer should be enabled
         bool enabled{};
@@ -629,6 +635,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         int actual = unit->setAlarmIRQ(-1);
         EXPECT_EQ(actual, -1);
 
+
         bool enabled{};
         TimerClock clk{};
         EXPECT_TRUE(unit->readTimerControl(enabled, clk));
@@ -642,6 +649,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         // writeTimer
         uint32_t actual1 = unit->writeTimer(5000);
 
+
         bool en1{};
         TimerClock clk1{};
         EXPECT_TRUE(unit->readTimerControl(en1, clk1));
@@ -653,8 +661,10 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         // Reset
         unit->writeTimer(0);
 
+
         // setTimerIRQ (same milliseconds)
         uint32_t actual2 = unit->setTimerIRQ(5000);
+
 
         bool en2{};
         TimerClock clk2{};
@@ -685,6 +695,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         rtc_date_t ad(2000, 1, 25, -1);
         EXPECT_TRUE(unit->writeAlarm(at, ad));
 
+
         rtc_time_t rt1{};
         rtc_date_t rd1{};
         EXPECT_TRUE(unit->readAlarm(rt1, rd1));
@@ -696,6 +707,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         m5::rtc_time_t ct = {14, 30, -1};
         int result        = unit->setAlarmIRQ(cd, ct);
         EXPECT_EQ(result, 1);
+
 
         rtc_time_t rt2{};
         rtc_date_t rd2{};
@@ -717,6 +729,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
         // Clear all flags
         unit->clearAlarmFlag();
         unit->clearTimerFlag();
+
         EXPECT_FALSE(unit->getIRQstatus());
     }
 
@@ -724,6 +737,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
     {
         SCOPED_TRACE("clearIRQ");
         unit->clearIRQ();
+
         // After clearing, both AF and TF should be 0
         bool af{};
         EXPECT_TRUE(unit->readAlarmFlag(af));
@@ -738,7 +752,7 @@ TEST_P(TestPCF8563, CompatAlarmTimer)
 // M5Unified Compat Nullptr Safety
 // ============================================================
 
-TEST_P(TestPCF8563, CompatNullptr)
+TEST_F(TestPCF8563, CompatNullptr)
 {
     SCOPED_TRACE(ustr);
 
@@ -747,6 +761,7 @@ TEST_P(TestPCF8563, CompatNullptr)
     init.date = {2026, 1, 1, 4};
     init.time = {12, 0, 0};
     EXPECT_TRUE(unit->setDateTime(init));
+
 
     // --- getDateTime(nullptr) returns false ---
     {
@@ -785,6 +800,7 @@ TEST_P(TestPCF8563, CompatNullptr)
         m5::rtc_date_t wd = {2025, 6, 15, 0};
         EXPECT_TRUE(unit->setDateTime(&wd, nullptr));
 
+
         // Date should be updated
         m5::rtc_date_t rd = unit->getDate();
         EXPECT_EQ(rd.year, 2025);
@@ -802,6 +818,7 @@ TEST_P(TestPCF8563, CompatNullptr)
         SCOPED_TRACE("setDateTime time_only");
         m5::rtc_time_t wt = {8, 30, 45};
         EXPECT_TRUE(unit->setDateTime(nullptr, &wt));
+
 
         // Time should be updated
         m5::rtc_time_t rt = unit->getTime();
