@@ -54,7 +54,7 @@ jobs:
 
       matrix:
         example:
-          - PlotToSerial
+          - NTPSync
 
         board:
           - Core

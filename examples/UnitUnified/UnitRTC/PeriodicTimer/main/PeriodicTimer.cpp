@@ -12,7 +12,7 @@
 #include <M5Unified.h>
 #include <M5UnitUnified.h>
 #include <M5UnitUnifiedRTC.h>
-#include <M5HAL.hpp>  // For NessoN1
+#include <M5HAL.hpp>
 #include <sys/time.h>
 #include <cstdint>
 
@@ -20,9 +20,12 @@ namespace {
 
 // POSIX timezone string (default: JST-9 = UTC+9, no DST)
 const char* YOUR_TIMEZONE = "JST-9";
-// const char* YOUR_TIMEZONE = "EST5";   // US Eastern (UTC-5, no DST)
-// const char* YOUR_TIMEZONE = "CET-1";  // Central Europe (UTC+1, no DST)
-// const char* YOUR_TIMEZONE = "CST-8";  // China (UTC+8)
+// const char* YOUR_TIMEZONE = "EST5EDT,M3.2.0,M11.1.0";  // US Eastern (UTC-5, DST)
+// const char* YOUR_TIMEZONE = "CST6CDT,M3.2.0,M11.1.0";  // US Central (UTC-6, DST)
+// const char* YOUR_TIMEZONE = "PST8PDT,M3.2.0,M11.1.0";  // US Pacific (UTC-8, DST)
+// const char* YOUR_TIMEZONE = "GMT0BST,M3.5.0/1,M10.5.0/2";    // UK (UTC+0, DST)
+// const char* YOUR_TIMEZONE = "CET-1CEST,M3.5.0/2,M10.5.0/3";  // EU Central (UTC+1, DST)
+// const char* YOUR_TIMEZONE = "CST-8";  // China (UTC+8, no DST)
 // See: https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv
 
 constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -30,7 +33,7 @@ constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 auto& lcd = M5.Display;
 LGFX_Sprite canvas(&lcd);
 m5::unit::UnitUnified Units;
-m5::unit::UnitPCF8563 unit;
+m5::unit::UnitRTC unit;
 
 volatile uint32_t timer_count{};
 volatile bool timer_fired{};
@@ -107,44 +110,41 @@ void setup()
     cfg.on_timer = on_timer;
     unit.config(cfg);
 
-    // NessoN1 / NanoC6: Arduino Wire (I2C_NUM_0) cannot be used for GROVE port.
-    // - NessoN1: Wire is used by M5Unified In_I2C for internal devices (IOExpander etc.).
+    // NessoN1: Arduino Wire (I2C_NUM_0) cannot be used for GROVE port.
+    //   Wire is used by M5Unified In_I2C for internal devices (IOExpander etc.).
     //   Wire1 exists but is reserved for HatPort — cannot be used for GROVE.
     //   Reconfiguring Wire to GROVE pins breaks In_I2C, causing ESP_ERR_INVALID_STATE in M5.update().
-    // - NanoC6: M5Unified In_I2C is disabled (no internal I2C devices), but Ex_I2C.setPort() registers
-    //   m5gfx::i2c on I2C_NUM_0 for GROVE pins (1/2). Using Wire.begin() on the same port creates a
-    //   dual-driver conflict (m5gfx::i2c vs Arduino Wire), causing NACK errors on button press timing.
-    // Solution: Use SoftwareI2C via M5HAL (bit-banging) for the GROVE port on both boards.
-    if (board == m5::board_t::board_ArduinoNessoN1 || board == m5::board_t::board_M5NanoC6) {
-        auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
-        auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
+    //   Solution: Use SoftwareI2C via M5HAL (bit-banging) for the GROVE port.
+    // NanoC6: Wire.begin() on GROVE pins conflicts with m5gfx::i2c registered by Ex_I2C.setPort()
+    //   on the same I2C_NUM_0, causing sporadic NACK errors.
+    //   Solution: Use M5.Ex_I2C (m5gfx::i2c) directly instead of Arduino Wire.
+    bool unit_ready{};
+    if (board == m5::board_t::board_ArduinoNessoN1) {
         // NessoN1: GROVE is on port_b (GPIO 5/4), not port_a (which maps to Wire pins 8/10)
-        if (board == m5::board_t::board_ArduinoNessoN1) {
-            pin_num_sda = M5.getPin(m5::pin_name_t::port_b_out);
-            pin_num_scl = M5.getPin(m5::pin_name_t::port_b_in);
-        }
+        auto pin_num_sda = M5.getPin(m5::pin_name_t::port_b_out);
+        auto pin_num_scl = M5.getPin(m5::pin_name_t::port_b_in);
         M5_LOGI("getPin(M5HAL): SDA:%u SCL:%u", pin_num_sda, pin_num_scl);
         m5::hal::bus::I2CBusConfig i2c_cfg;
         i2c_cfg.pin_sda = m5::hal::gpio::getPin(pin_num_sda);
         i2c_cfg.pin_scl = m5::hal::gpio::getPin(pin_num_scl);
         auto i2c_bus    = m5::hal::bus::i2c::getBus(i2c_cfg);
         M5_LOGI("Bus:%d", i2c_bus.has_value());
-        if (!Units.add(unit, i2c_bus ? i2c_bus.value() : nullptr) || !Units.begin()) {
-            M5_LOGE("Failed to begin");
-            while (true) {
-                m5::utility::delay(10000);
-            }
-        }
+        unit_ready = Units.add(unit, i2c_bus ? i2c_bus.value() : nullptr) && Units.begin();
+    } else if (board == m5::board_t::board_M5NanoC6) {
+        M5_LOGI("Using M5.Ex_I2C");
+        unit_ready = Units.add(unit, M5.Ex_I2C) && Units.begin();
     } else {
         auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
         auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
         M5_LOGI("getPin: SDA:%u SCL:%u", pin_num_sda, pin_num_scl);
+        Wire.end();
         Wire.begin(pin_num_sda, pin_num_scl, 100 * 1000U);
-        if (!Units.add(unit, Wire) || !Units.begin()) {
-            M5_LOGE("Failed to begin");
-            while (true) {
-                m5::utility::delay(10000);
-            }
+        unit_ready = Units.add(unit, Wire) && Units.begin();
+    }
+    if (!unit_ready) {
+        M5_LOGE("Failed to begin");
+        while (true) {
+            m5::utility::delay(10000);
         }
     }
 
