@@ -474,6 +474,14 @@ public:
 #endif  // defined(__M5_RTC_BASE_H__) || defined(__M5UNIFIED_HPP__)
 
 protected:
+    ///@name I2C register access (stop bit centralized here for experimentation)
+    ///@{
+    bool read_register(const uint8_t reg, uint8_t* buf, const size_t len);
+    bool read_register8(const uint8_t reg, uint8_t& val);
+    bool write_register(const uint8_t reg, const uint8_t* buf, const size_t len);
+    bool write_register8(const uint8_t reg, const uint8_t val);
+    ///@}
+
     //! @brief Read time and/or date registers (nullable pointer support)
     bool read_datetime(pcf8563::rtc_date_t* date, pcf8563::rtc_time_t* time);
     //! @brief Write time and/or date registers (nullable pointer support)

@@ -18,9 +18,7 @@
 
 #include "unit_PCF8563.hpp"
 #include <M5Utility.hpp>
-#if defined(ARDUINO)
-#include <Arduino.h>
-#endif
+#include <driver/gpio.h>
 #if __has_include(<sys/time.h>)
 #include <sys/time.h>
 #endif
@@ -43,6 +41,12 @@ inline uint8_t byte2bcd(const uint8_t val)
     return ((val / 10) << 4) | (val % 10);
 }
 
+// I2C stop condition between address-set and data phases
+// true  = STOP + START (two separate transactions)
+// false = RESTART (repeated start, single transaction)
+constexpr bool READ_STOP{true};
+constexpr bool WRITE_STOP{true};
+
 }  // namespace
 
 namespace m5 {
@@ -62,33 +66,39 @@ void IRAM_ATTR UnitPCF8563::isr_handler(void* arg)
 bool UnitPCF8563::begin()
 {
     // Clear control/status registers
-    if (!writeRegister8(CONTROL1_REG, 0x00)) {
+    if (!write_register8(CONTROL1_REG, 0x00)) {
         M5_LIB_LOGE("Failed to write CONTROL1");
         return false;
     }
-    if (!writeRegister8(CONTROL2_REG, 0x00)) {
+    if (!write_register8(CONTROL2_REG, 0x00)) {
         M5_LIB_LOGE("Failed to write CONTROL2");
         return false;
     }
     // Set CLKOUT from config (default: disabled for power saving)
-    if (!writeRegister8(CLKOUT_CONTROL_REG, static_cast<uint8_t>(_cfg.clkout))) {
+    if (!write_register8(CLKOUT_CONTROL_REG, static_cast<uint8_t>(_cfg.clkout))) {
         M5_LIB_LOGE("Failed to write CLKOUT_CONTROL");
         return false;
     }
     // Disable timer (TE=0, TD=11 for minimum power)
-    if (!writeRegister8(TIMER_CONTROL_REG, 0x03)) {
+    if (!write_register8(TIMER_CONTROL_REG, 0x03)) {
         M5_LIB_LOGE("Failed to write TIMER_CONTROL");
         return false;
     }
 
-#if defined(ARDUINO)
     // Setup hardware interrupt if configured
     if (!_cfg.polling && _cfg.int_pin >= 0) {
-        pinMode(_cfg.int_pin, INPUT_PULLUP);
-        attachInterruptArg(digitalPinToInterrupt(_cfg.int_pin), isr_handler, this, FALLING);
+        gpio_num_t pin = static_cast<gpio_num_t>(_cfg.int_pin);
+        gpio_config_t io_conf{};
+        io_conf.pin_bit_mask = 1ULL << pin;
+        io_conf.mode         = GPIO_MODE_INPUT;
+        io_conf.pull_up_en   = GPIO_PULLUP_ENABLE;
+        io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        io_conf.intr_type    = GPIO_INTR_NEGEDGE;
+        gpio_config(&io_conf);
+        gpio_install_isr_service(0);
+        gpio_isr_handler_add(pin, isr_handler, this);
         M5_LIB_LOGI("IRQ: hardware interrupt on pin %d", _cfg.int_pin);
     }
-#endif
 
     // Set polling interval
     if (_cfg.polling && (_cfg.on_alarm || _cfg.on_timer)) {
@@ -125,7 +135,7 @@ void UnitPCF8563::update(const bool force)
 void UnitPCF8563::check_irq_flags()
 {
     uint8_t ctrl2{};
-    if (!readRegister8(CONTROL2_REG, ctrl2, 0)) {
+    if (!read_register8(CONTROL2_REG, ctrl2)) {
         return;
     }
 
@@ -136,8 +146,13 @@ void UnitPCF8563::check_irq_flags()
         return;
     }
 
-    // Clear fired flags
-    writeRegister8(CONTROL2_REG, ctrl2 & 0xF3);
+    // Clear fired flags (AF, TF) and reserved bits 7-5 (must be 0).
+    // If clear fails, skip callbacks — flags remain set and will be
+    // retried on the next poll, avoiding duplicate callbacks.
+    if (!write_register8(CONTROL2_REG, ctrl2 & 0x13)) {
+        M5_LIB_LOGW("Failed to clear IRQ flags");
+        return;
+    }
 
     if (alarm_flag && _cfg.on_alarm) {
         _cfg.on_alarm();
@@ -148,8 +163,9 @@ void UnitPCF8563::check_irq_flags()
         // controls INT pin behavior. Without disabling TE, TF would be set
         // again on the next countdown cycle.
         if (!(ctrl2 & 0x10)) {  // TI_TP bit
-            writeTimerInterrupt(false);
-            writeTimerControl(false, pcf8563::TimerClock::HzPM);
+            if (!writeTimerInterrupt(false) || !writeTimerControl(false, pcf8563::TimerClock::HzPM)) {
+                M5_LIB_LOGW("Failed to disable oneshot timer");
+            }
         }
         if (_cfg.on_timer) {
             _cfg.on_timer();
@@ -161,6 +177,26 @@ void UnitPCF8563::check_irq_flags()
 // Protected helpers
 // ============================================================
 
+bool UnitPCF8563::read_register(const uint8_t reg, uint8_t* buf, const size_t len)
+{
+    return readRegister(reg, buf, len, 0, READ_STOP);
+}
+
+bool UnitPCF8563::read_register8(const uint8_t reg, uint8_t& val)
+{
+    return readRegister8(reg, val, 0, READ_STOP);
+}
+
+bool UnitPCF8563::write_register(const uint8_t reg, const uint8_t* buf, const size_t len)
+{
+    return writeRegister(reg, buf, len, WRITE_STOP);
+}
+
+bool UnitPCF8563::write_register8(const uint8_t reg, const uint8_t val)
+{
+    return writeRegister8(reg, val, WRITE_STOP);
+}
+
 bool UnitPCF8563::read_datetime(pcf8563::rtc_date_t* date, pcf8563::rtc_time_t* time)
 {
     uint8_t start_reg = (time != nullptr) ? SECONDS_REG : DAYS_REG;
@@ -170,7 +206,7 @@ bool UnitPCF8563::read_datetime(pcf8563::rtc_date_t* date, pcf8563::rtc_time_t* 
     }
 
     uint8_t buf[7]{};
-    if (!readRegister(start_reg, buf, len, 0)) {
+    if (!read_register(start_reg, buf, len)) {
         M5_LIB_LOGE("Failed to read datetime");
         return false;
     }
@@ -211,7 +247,7 @@ bool UnitPCF8563::write_datetime(const pcf8563::rtc_date_t* date, const pcf8563:
     if (idx == 0) {
         return false;
     }
-    if (!writeRegister(reg_start, buf, idx)) {
+    if (!write_register(reg_start, buf, idx)) {
         M5_LIB_LOGE("Failed to write datetime");
         return false;
     }
@@ -220,7 +256,7 @@ bool UnitPCF8563::write_datetime(const pcf8563::rtc_date_t* date, const pcf8563:
 
 bool UnitPCF8563::read_control2(uint8_t& val)
 {
-    return readRegister8(CONTROL2_REG, val, 0);
+    return read_register8(CONTROL2_REG, val);
 }
 
 bool UnitPCF8563::write_control2_bits(const uint8_t mask, const uint8_t bits)
@@ -229,8 +265,8 @@ bool UnitPCF8563::write_control2_bits(const uint8_t mask, const uint8_t bits)
     if (!read_control2(val)) {
         return false;
     }
-    val = (val & ~mask) | (bits & mask);
-    return writeRegister8(CONTROL2_REG, val);
+    val = ((val & ~mask) | (bits & mask)) & 0x1F;  // bits 7-5 are reserved (must be 0)
+    return write_register8(CONTROL2_REG, val);
 }
 
 // ============================================================
@@ -303,18 +339,19 @@ bool UnitPCF8563::writeAlarm(const pcf8563::rtc_time_t& time, const pcf8563::rtc
     if (has_alarm) {
         ctrl2 |= 0x02;  // AIE
     }
+    ctrl2 &= 0x1F;  // bits 7-5 are reserved (must be 0)
 
     uint8_t buf[4];
     buf[0] = (time.minutes < 0) ? 0x80 : static_cast<uint8_t>(byte2bcd(time.minutes) & 0x7F);
     buf[1] = (time.hours < 0) ? 0x80 : static_cast<uint8_t>(byte2bcd(time.hours) & 0x3F);
     buf[2] = (date.date < 0) ? 0x80 : static_cast<uint8_t>(byte2bcd(date.date) & 0x3F);
     buf[3] = (date.weekDay < 0) ? 0x80 : static_cast<uint8_t>(byte2bcd(date.weekDay) & 0x07);
-    if (!writeRegister(ALARM_MINUTES_REG, buf, 4)) {
+    if (!write_register(ALARM_MINUTES_REG, buf, 4)) {
         M5_LIB_LOGE("Failed to write alarm registers");
         return false;
     }
 
-    return writeRegister8(CONTROL2_REG, ctrl2);
+    return write_register8(CONTROL2_REG, ctrl2);
 }
 
 bool UnitPCF8563::readAlarm(pcf8563::rtc_time_t& time, pcf8563::rtc_date_t& date)
@@ -322,7 +359,7 @@ bool UnitPCF8563::readAlarm(pcf8563::rtc_time_t& time, pcf8563::rtc_date_t& date
     time = {};
     date = {};
     uint8_t buf[4]{};
-    if (!readRegister(ALARM_MINUTES_REG, buf, 4, 0)) {
+    if (!read_register(ALARM_MINUTES_REG, buf, 4)) {
         M5_LIB_LOGE("Failed to read alarm registers");
         return false;
     }
@@ -383,14 +420,16 @@ uint32_t UnitPCF8563::writeTimer(const uint32_t msec, const bool repeat)
     if (!read_control2(ctrl2)) {
         return 0;
     }
-    // Clear AF(0x08), TF(0x04), TI_TP(0x10), TIE(0x01)
+    // Clear AF(0x08), TF(0x04), TI_TP(0x10), TIE(0x01) and reserved bits 7-5
     ctrl2 &= ~0x1D;
+    ctrl2 &= 0x1F;
 
     uint32_t afterSeconds = (msec + 500) / 1000;
     if (afterSeconds == 0) {
         // Disable: write CONTROL2 (flags cleared, TIE=0, TI_TP=0) + disable timer
-        writeRegister8(CONTROL2_REG, ctrl2);
-        writeTimerControl(false, pcf8563::TimerClock::HzPM);
+        if (!write_register8(CONTROL2_REG, ctrl2) || !writeTimerControl(false, pcf8563::TimerClock::HzPM)) {
+            M5_LIB_LOGW("Failed to disable timer");
+        }
         return 0;
     }
 
@@ -414,13 +453,21 @@ uint32_t UnitPCF8563::writeTimer(const uint32_t msec, const bool repeat)
         ctrl2 |= 0x10;
     }
     ctrl2 |= 0x01;  // TIE
-    writeRegister8(CONTROL2_REG, ctrl2);
+    if (!write_register8(CONTROL2_REG, ctrl2)) {
+        return 0;
+    }
 
-    // Write timer control (TE + clock) and countdown value as consecutive registers
-    uint8_t tbuf[2];
-    tbuf[0] = 0x80 | (static_cast<uint8_t>(clock) & 0x03);  // TE=1 + TD
-    tbuf[1] = static_cast<uint8_t>(afterSeconds);
-    writeRegister(TIMER_CONTROL_REG, tbuf, 2);
+    // Disable timer first, then set countdown value, then enable.
+    // Writing TE=1 and countdown as consecutive bytes (0x0E, 0x0F) risks the
+    // timer starting with the OLD countdown value before 0x0F is updated.
+    uint8_t td = static_cast<uint8_t>(clock) & 0x03;
+    if (!write_register8(TIMER_CONTROL_REG, td)                             // TE=0 + TD (stop)
+        || !write_register8(TIMER_REG, static_cast<uint8_t>(afterSeconds))  // countdown value
+        || !write_register8(TIMER_CONTROL_REG, 0x80 | td)) {                // TE=1 + TD (start)
+        // Timer may be in inconsistent state; disable it
+        write_register8(TIMER_CONTROL_REG, 0x03);  // TE=0, TD=11 (low power)
+        return 0;
+    }
 
     return afterSeconds * div * 1000;
 }
@@ -430,7 +477,7 @@ bool UnitPCF8563::readTimerControl(bool& enabled, pcf8563::TimerClock& clock)
     enabled = false;
     clock   = pcf8563::TimerClock::Hz4096;
     uint8_t val{};
-    if (!readRegister8(TIMER_CONTROL_REG, val, 0)) {
+    if (!read_register8(TIMER_CONTROL_REG, val)) {
         return false;
     }
     enabled = (val & 0x80) != 0;                             // TE bit
@@ -441,18 +488,18 @@ bool UnitPCF8563::readTimerControl(bool& enabled, pcf8563::TimerClock& clock)
 bool UnitPCF8563::writeTimerControl(const bool enabled, const pcf8563::TimerClock clock)
 {
     uint8_t val = (enabled ? 0x80 : 0x00) | (static_cast<uint8_t>(clock) & 0x03);
-    return writeRegister8(TIMER_CONTROL_REG, val);
+    return write_register8(TIMER_CONTROL_REG, val);
 }
 
 bool UnitPCF8563::readTimerValue(uint8_t& count)
 {
     count = 0;
-    return readRegister8(TIMER_REG, count, 0);
+    return read_register8(TIMER_REG, count);
 }
 
 bool UnitPCF8563::writeTimerValue(const uint8_t count)
 {
-    return writeRegister8(TIMER_REG, count);
+    return write_register8(TIMER_REG, count);
 }
 
 bool UnitPCF8563::readTimerInterrupt(bool& enabled)
@@ -509,7 +556,7 @@ bool UnitPCF8563::readStop(bool& stopped)
 {
     stopped = false;
     uint8_t val{};
-    if (!readRegister8(CONTROL1_REG, val, 0)) {
+    if (!read_register8(CONTROL1_REG, val)) {
         return false;
     }
     stopped = (val & 0x20) != 0;  // STOP bit
@@ -518,12 +565,8 @@ bool UnitPCF8563::readStop(bool& stopped)
 
 bool UnitPCF8563::writeStop(const bool stop)
 {
-    uint8_t val{};
-    if (!readRegister8(CONTROL1_REG, val, 0)) {
-        return false;
-    }
-    val = stop ? (val | 0x20) : (val & ~0x20);
-    return writeRegister8(CONTROL1_REG, val);
+    // Only STOP bit (5) is valid; TEST1/TESTC and reserved bits must be 0
+    return write_register8(CONTROL1_REG, stop ? 0x20 : 0x00);
 }
 
 // ---- Status ----
@@ -532,7 +575,7 @@ bool UnitPCF8563::readVoltLow(bool& low)
 {
     low = false;
     uint8_t val{};
-    if (!readRegister8(SECONDS_REG, val, 0)) {
+    if (!read_register8(SECONDS_REG, val)) {
         return false;
     }
     low = (val & 0x80) != 0;  // VL bit
@@ -593,7 +636,7 @@ void UnitPCF8563::disableIRQ()
     // Disable timer
     writeTimerControl(false, pcf8563::TimerClock::Hz1);
     // Clear all CONTROL2 flags and enable bits
-    writeRegister8(CONTROL2_REG, 0x00);
+    write_register8(CONTROL2_REG, 0x00);
 }
 
 void UnitPCF8563::setSystemTimeFromRtc(struct timezone* tz)
