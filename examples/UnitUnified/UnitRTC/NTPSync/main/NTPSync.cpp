@@ -148,7 +148,8 @@ bool sync_ntp_to_rtc()
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
 
-    struct tm t{};
+    struct tm t {
+    };
     if (!getLocalTime(&t, 10000)) {
         M5_LOGE("Failed to get NTP time");
         display_printf("\nNTP FAILED\n");
