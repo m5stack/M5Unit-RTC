@@ -19,8 +19,11 @@
 
 #include "unit/unit_PCF8563.hpp"
 
+namespace m5 {
+namespace unit {
 using UnitBM8563  = m5::unit::UnitPCF8563;
 using UnitHYM8563 = m5::unit::UnitPCF8563;
 using UnitRTC     = m5::unit::UnitPCF8563;  //!< @brief Alias for UnitRTC
-
+}  // namespace unit
+}  // namespace m5
 #endif
