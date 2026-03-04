@@ -6,4 +6,4 @@
 /*
   Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
 */
-#include "main/PlotToSerial.cpp"
+#include "main/NTPSync.cpp"
