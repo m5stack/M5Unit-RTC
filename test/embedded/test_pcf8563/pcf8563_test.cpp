@@ -60,83 +60,84 @@ TEST_F(TestPCF8563, DateTime)
     }
 
     // --- Date round-trip ---
-    {  // 2000 or later
-        {
-            SCOPED_TRACE("Date 2026-02-26");
-            rtc_date_t wd(2026, 2, 26, 4);
-            EXPECT_TRUE(unit->writeDate(wd));
+    {// 2000 or later
+     {SCOPED_TRACE("Date 2026-02-26");
+    rtc_date_t wd(2026, 2, 26, 4);
+    EXPECT_TRUE(unit->writeDate(wd));
 
-            rtc_date_t rd{};
-            EXPECT_TRUE(unit->readDate(rd));
-            EXPECT_EQ(rd.year, 2026);
-            EXPECT_EQ(rd.month, 2);
-            EXPECT_EQ(rd.date, 26);
-            EXPECT_EQ(rd.weekDay, 4);
-        }
-        // 1900s (century bit)
-        {
-            SCOPED_TRACE("Date 1999-12-31");
-            rtc_date_t wd(1999, 12, 31, 5);
-            EXPECT_TRUE(unit->writeDate(wd));
+    rtc_date_t rd{};
+    EXPECT_TRUE(unit->readDate(rd));
+    EXPECT_EQ(rd.year, 2026);
+    EXPECT_EQ(rd.month, 2);
+    EXPECT_EQ(rd.date, 26);
+    EXPECT_EQ(rd.weekDay, 4);
+}
+// 1900s (century bit)
+{
+    SCOPED_TRACE("Date 1999-12-31");
+    rtc_date_t wd(1999, 12, 31, 5);
+    EXPECT_TRUE(unit->writeDate(wd));
 
-            rtc_date_t rd{};
-            EXPECT_TRUE(unit->readDate(rd));
-            EXPECT_EQ(rd.year, 1999);
-            EXPECT_EQ(rd.month, 12);
-            EXPECT_EQ(rd.date, 31);
-        }
-        // Boundary: 2000-01-01
-        {
-            SCOPED_TRACE("Date 2000-01-01");
-            rtc_date_t wd(2000, 1, 1, 6);
-            EXPECT_TRUE(unit->writeDate(wd));
+    rtc_date_t rd{};
+    EXPECT_TRUE(unit->readDate(rd));
+    EXPECT_EQ(rd.year, 1999);
+    EXPECT_EQ(rd.month, 12);
+    EXPECT_EQ(rd.date, 31);
+}
+// Boundary: 2000-01-01
+{
+    SCOPED_TRACE("Date 2000-01-01");
+    rtc_date_t wd(2000, 1, 1, 6);
+    EXPECT_TRUE(unit->writeDate(wd));
 
-            rtc_date_t rd{};
-            EXPECT_TRUE(unit->readDate(rd));
-            EXPECT_EQ(rd.year, 2000);
-            EXPECT_EQ(rd.month, 1);
-            EXPECT_EQ(rd.date, 1);
-        }
-    }
+    rtc_date_t rd{};
+    EXPECT_TRUE(unit->readDate(rd));
+    EXPECT_EQ(rd.year, 2000);
+    EXPECT_EQ(rd.month, 1);
+    EXPECT_EQ(rd.date, 1);
+}
+}
 
-    // --- DateTime round-trip (rtc_datetime_t) ---
-    {
-        SCOPED_TRACE("DateTime rtc_datetime_t");
-        rtc_datetime_t wdt(rtc_date_t(2026, 6, 15, 1), rtc_time_t(8, 30, 0));
-        EXPECT_TRUE(unit->writeDateTime(wdt));
+// --- DateTime round-trip (rtc_datetime_t) ---
+{
+    SCOPED_TRACE("DateTime rtc_datetime_t");
+    rtc_datetime_t wdt(rtc_date_t(2026, 6, 15, 1), rtc_time_t(8, 30, 0));
+    EXPECT_TRUE(unit->writeDateTime(wdt));
 
-        rtc_datetime_t rdt{};
-        EXPECT_TRUE(unit->readDateTime(rdt));
-        EXPECT_EQ(rdt.date.year, 2026);
-        EXPECT_EQ(rdt.date.month, 6);
-        EXPECT_EQ(rdt.date.date, 15);
-        EXPECT_EQ(rdt.time.hours, 8);
-        EXPECT_EQ(rdt.time.minutes, 30);
-        EXPECT_EQ(rdt.time.seconds, 0);
-    }
+    rtc_datetime_t rdt{};
+    EXPECT_TRUE(unit->readDateTime(rdt));
+    EXPECT_EQ(rdt.date.year, 2026);
+    EXPECT_EQ(rdt.date.month, 6);
+    EXPECT_EQ(rdt.date.date, 15);
+    EXPECT_EQ(rdt.time.hours, 8);
+    EXPECT_EQ(rdt.time.minutes, 30);
+    EXPECT_EQ(rdt.time.seconds, 0);
+}
 
-    // --- DateTime round-trip (struct tm) ---
-    {
-        SCOPED_TRACE("DateTime struct tm");
-        struct tm wt{};
-        wt.tm_year = 126;  // 2026
-        wt.tm_mon  = 1;    // February
-        wt.tm_mday = 26;
-        wt.tm_wday = 4;
-        wt.tm_hour = 14;
-        wt.tm_min  = 20;
-        wt.tm_sec  = 33;
-        EXPECT_TRUE(unit->writeDateTime(wt));
+// --- DateTime round-trip (struct tm) ---
+{
+    SCOPED_TRACE("DateTime struct tm");
+    struct tm wt {
+    };
+    wt.tm_year = 126;  // 2026
+    wt.tm_mon  = 1;    // February
+    wt.tm_mday = 26;
+    wt.tm_wday = 4;
+    wt.tm_hour = 14;
+    wt.tm_min  = 20;
+    wt.tm_sec  = 33;
+    EXPECT_TRUE(unit->writeDateTime(wt));
 
-        struct tm rt{};
-        EXPECT_TRUE(unit->readDateTime(rt));
-        EXPECT_EQ(rt.tm_year, 126);
-        EXPECT_EQ(rt.tm_mon, 1);
-        EXPECT_EQ(rt.tm_mday, 26);
-        EXPECT_EQ(rt.tm_hour, 14);
-        EXPECT_EQ(rt.tm_min, 20);
-        EXPECT_EQ(rt.tm_sec, 33);
-    }
+    struct tm rt {
+    };
+    EXPECT_TRUE(unit->readDateTime(rt));
+    EXPECT_EQ(rt.tm_year, 126);
+    EXPECT_EQ(rt.tm_mon, 1);
+    EXPECT_EQ(rt.tm_mday, 26);
+    EXPECT_EQ(rt.tm_hour, 14);
+    EXPECT_EQ(rt.tm_min, 20);
+    EXPECT_EQ(rt.tm_sec, 33);
+}
 }
 
 // ============================================================
