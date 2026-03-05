@@ -803,3 +803,131 @@ TEST_F(TestPCF8563, CompatNullptr)
         EXPECT_EQ(rd.date, 15);
     }
 }
+
+// ============================================================
+// Timer Periodic Mode
+// ============================================================
+
+TEST_F(TestPCF8563, TimerPeriodic)
+{
+    SCOPED_TRACE(ustr);
+
+    // --- writeTimerPeriodic / readTimerPeriodic round-trip ---
+    {
+        SCOPED_TRACE("Periodic true");
+        EXPECT_TRUE(unit->writeTimerPeriodic(true));
+
+        bool periodic{};
+        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
+        EXPECT_TRUE(periodic);
+    }
+
+    {
+        SCOPED_TRACE("Periodic false");
+        EXPECT_TRUE(unit->writeTimerPeriodic(false));
+
+        bool periodic{};
+        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
+        EXPECT_FALSE(periodic);
+    }
+
+    // --- writeTimer with repeat=true sets TI_TP ---
+    {
+        SCOPED_TRACE("writeTimer repeat=true");
+        uint32_t actual = unit->writeTimer(3000, true);
+        EXPECT_GT(actual, 0U);
+
+        bool periodic{};
+        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
+        EXPECT_TRUE(periodic);
+
+        bool enabled{};
+        TimerClock clk{};
+        EXPECT_TRUE(unit->readTimerControl(enabled, clk));
+        EXPECT_TRUE(enabled);
+
+        unit->writeTimer(0);
+    }
+
+    // --- writeTimer with repeat=false clears TI_TP ---
+    {
+        SCOPED_TRACE("writeTimer repeat=false");
+        uint32_t actual = unit->writeTimer(3000, false);
+        EXPECT_GT(actual, 0U);
+
+        bool periodic{};
+        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
+        EXPECT_FALSE(periodic);
+
+        unit->writeTimer(0);
+    }
+}
+
+// ============================================================
+// Compat: setAlarmIRQ time-only
+// ============================================================
+
+TEST_F(TestPCF8563, CompatAlarmTimeOnly)
+{
+    SCOPED_TRACE(ustr);
+
+    // --- setAlarmIRQ(rtc_time_t) sets time-only alarm ---
+    {
+        SCOPED_TRACE("setAlarmIRQ time-only");
+        m5::rtc_time_t at = {9, 15, -1};
+        int result         = unit->setAlarmIRQ(at);
+        EXPECT_EQ(result, 1);
+
+        pcf8563::rtc_time_t rt{};
+        pcf8563::rtc_date_t rd{};
+        EXPECT_TRUE(unit->readAlarm(rt, rd));
+        EXPECT_EQ(rt.minutes, 15);
+        EXPECT_EQ(rt.hours, 9);
+        // date/weekDay should be disabled
+        EXPECT_EQ(rd.date, -1);
+        EXPECT_EQ(rd.weekDay, -1);
+
+        bool aie{};
+        EXPECT_TRUE(unit->readAlarmInterrupt(aie));
+        EXPECT_TRUE(aie);
+    }
+
+    // --- setAlarmIRQ(rtc_time_t) all disabled ---
+    {
+        SCOPED_TRACE("setAlarmIRQ time-only all disabled");
+        m5::rtc_time_t at = {-1, -1, -1};
+        int result         = unit->setAlarmIRQ(at);
+        EXPECT_EQ(result, 0);
+
+        bool aie{};
+        EXPECT_TRUE(unit->readAlarmInterrupt(aie));
+        EXPECT_FALSE(aie);
+    }
+}
+
+// ============================================================
+// Compat: setSystemTimeFromRtc
+// ============================================================
+
+TEST_F(TestPCF8563, CompatSetSystemTime)
+{
+    SCOPED_TRACE(ustr);
+
+    // Write a known datetime to RTC
+    pcf8563::rtc_datetime_t wdt(pcf8563::rtc_date_t(2026, 3, 6, 5), pcf8563::rtc_time_t(12, 0, 0));
+    EXPECT_TRUE(unit->writeDateTime(wdt));
+
+    // Set system time from RTC
+    unit->setSystemTimeFromRtc(nullptr);
+
+    // Verify system time is close to what we wrote
+    struct timeval tv {};
+    gettimeofday(&tv, nullptr);
+    struct tm* t = gmtime(&tv.tv_sec);
+
+    EXPECT_EQ(t->tm_year + 1900, 2026);
+    EXPECT_EQ(t->tm_mon + 1, 3);
+    EXPECT_EQ(t->tm_mday, 6);
+    EXPECT_EQ(t->tm_hour, 12);
+    EXPECT_EQ(t->tm_min, 0);
+}
