@@ -875,7 +875,7 @@ TEST_F(TestPCF8563, CompatAlarmTimeOnly)
     {
         SCOPED_TRACE("setAlarmIRQ time-only");
         m5::rtc_time_t at = {9, 15, -1};
-        int result         = unit->setAlarmIRQ(at);
+        int result        = unit->setAlarmIRQ(at);
         EXPECT_EQ(result, 1);
 
         pcf8563::rtc_time_t rt{};
@@ -896,7 +896,7 @@ TEST_F(TestPCF8563, CompatAlarmTimeOnly)
     {
         SCOPED_TRACE("setAlarmIRQ time-only all disabled");
         m5::rtc_time_t at = {-1, -1, -1};
-        int result         = unit->setAlarmIRQ(at);
+        int result        = unit->setAlarmIRQ(at);
         EXPECT_EQ(result, 0);
 
         bool aie{};
@@ -921,7 +921,8 @@ TEST_F(TestPCF8563, CompatSetSystemTime)
     unit->setSystemTimeFromRtc(nullptr);
 
     // Verify system time is close to what we wrote
-    struct timeval tv {};
+    struct timeval tv {
+    };
     gettimeofday(&tv, nullptr);
     struct tm* t = gmtime(&tv.tv_sec);
 
