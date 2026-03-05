@@ -8,7 +8,7 @@ M5Stack-**UNIT RTC** related programs.compatible with BM8563 and HYM8563.
 
 ## Related Link
 
-[Document & Datasheet - M5Unit-RTC](https://docs.m5stack.com/en/unit/rtc)
+[Document & Datasheet - M5Unit-RTC](https://docs.m5stack.com/en/unit/UNIT%20RTC)
 
 ## License
 
