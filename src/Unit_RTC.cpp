@@ -1,15 +1,18 @@
 #include "Unit_RTC.h"
 
-Unit_RTC::Unit_RTC() {
+Unit_RTC::Unit_RTC()
+{
     _addr = DEVICE_ADDR;
 }
 
-Unit_RTC::Unit_RTC(uint8_t addr) {
+Unit_RTC::Unit_RTC(uint8_t addr)
+{
     _addr = addr;
 }
 
 /*! @brief Initialize the RTC. */
-void Unit_RTC::begin() {
+void Unit_RTC::begin()
+{
     _wire = &Wire;
     _wire->begin();
     writeReg(0x00, 0x00);
@@ -18,7 +21,8 @@ void Unit_RTC::begin() {
 }
 
 /*! @brief Initialize the RTC. */
-void Unit_RTC::begin(TwoWire *wire) {
+void Unit_RTC::begin(TwoWire *wire)
+{
     _wire = wire;
     _wire->begin();
     writeReg(0x00, 0x00);
@@ -27,8 +31,8 @@ void Unit_RTC::begin(TwoWire *wire) {
 }
 
 /*! @brief Initialize the RTC. */
-void Unit_RTC::begin(TwoWire *wire, uint8_t scl, uint8_t sda,
-                     uint32_t i2c_freq) {
+void Unit_RTC::begin(TwoWire *wire, uint8_t scl, uint8_t sda, uint32_t i2c_freq)
+{
     _wire = wire;
     _wire->begin(DEVICE_ADDR, sda, scl, i2c_freq);
     writeReg(0x00, 0x00);
@@ -37,7 +41,8 @@ void Unit_RTC::begin(TwoWire *wire, uint8_t scl, uint8_t sda,
 }
 
 /*! @brief Write data to register. */
-void Unit_RTC::writeReg(uint8_t reg, uint8_t data) {
+void Unit_RTC::writeReg(uint8_t reg, uint8_t data)
+{
     _wire->beginTransmission(DEVICE_ADDR);
     _wire->write(reg);
     _wire->write(data);
@@ -45,7 +50,8 @@ void Unit_RTC::writeReg(uint8_t reg, uint8_t data) {
 }
 
 /*! @brief Read data from register. */
-uint8_t Unit_RTC::ReadReg(uint8_t reg) {
+uint8_t Unit_RTC::ReadReg(uint8_t reg)
+{
     _wire->beginTransmission(DEVICE_ADDR);
     _wire->write(reg);
     _wire->endTransmission(false);
@@ -53,7 +59,8 @@ uint8_t Unit_RTC::ReadReg(uint8_t reg) {
     return _wire->read();
 }
 
-void Unit_RTC::Str2Time(void) {
+void Unit_RTC::Str2Time(void)
+{
     Second = (asc[0] - 0x30) * 10 + asc[1] - 0x30;
     Minute = (asc[2] - 0x30) * 10 + asc[3] - 0x30;
     Hour   = (asc[4] - 0x30) * 10 + asc[5] - 0x30;
@@ -66,16 +73,17 @@ void Unit_RTC::Str2Time(void) {
   */
 }
 
-void Unit_RTC::DataMask() {
-    _trdata[0] = _trdata[0] & 0x7f;  //秒
-    _trdata[1] = _trdata[1] & 0x7f;  //分
-    _trdata[2] = _trdata[2] & 0x3f;  //时
+void Unit_RTC::DataMask()
+{
+    _trdata[0] = _trdata[0] & 0x7f;  // 秒
+    _trdata[1] = _trdata[1] & 0x7f;  // 分
+    _trdata[2] = _trdata[2] & 0x3f;  // 时
 
-    _trdata[3] = _trdata[3] & 0x3f;  //日
-    _trdata[4] = _trdata[4] & 0x07;  //星期
-    _trdata[5] = _trdata[5] & 0x1f;  //月
+    _trdata[3] = _trdata[3] & 0x3f;  // 日
+    _trdata[4] = _trdata[4] & 0x07;  // 星期
+    _trdata[5] = _trdata[5] & 0x1f;  // 月
 
-    _trdata[6] = _trdata[6] & 0xff;  //年
+    _trdata[6] = _trdata[6] & 0xff;  // 年
 }
 /********************************************************************
 函 数 名： void Bcd2asc(void)
@@ -85,22 +93,24 @@ void Unit_RTC::DataMask() {
 入口参数：
 返 回 值：无
 ***********************************************************************/
-void Unit_RTC::Bcd2asc(void) {
+void Unit_RTC::Bcd2asc(void)
+{
     uint8_t i, j;
     for (j = 0, i = 0; i < 7; i++) {
-        asc[j++] =
-            (_trdata[i] & 0xf0) >> 4 | 0x30; /*格式为: 秒 分 时 日 月 星期 年 */
+        asc[j++] = (_trdata[i] & 0xf0) >> 4 | 0x30; /*格式为: 秒 分 时 日 月 星期 年 */
         asc[j++] = (_trdata[i] & 0x0f) | 0x30;
     }
 }
 
-uint8_t Unit_RTC::Bcd2ToByte(uint8_t Value) {
+uint8_t Unit_RTC::Bcd2ToByte(uint8_t Value)
+{
     uint8_t tmp = 0;
     tmp         = ((uint8_t)(Value & (uint8_t)0xF0) >> (uint8_t)0x4) * 10;
     return (tmp + (Value & (uint8_t)0x0F));
 }
 
-uint8_t Unit_RTC::ByteToBcd2(uint8_t Value) {
+uint8_t Unit_RTC::ByteToBcd2(uint8_t Value)
+{
     uint8_t bcdhigh = 0;
 
     while (Value >= 10) {
@@ -111,7 +121,8 @@ uint8_t Unit_RTC::ByteToBcd2(uint8_t Value) {
     return ((uint8_t)(bcdhigh << 4) | Value);
 }
 
-void Unit_RTC::getTime(rtc_time_type *RTC_TimeStruct) {
+void Unit_RTC::getTime(rtc_time_type *RTC_TimeStruct)
+{
     // if()
     uint8_t buf[3] = {0};
 
@@ -126,14 +137,15 @@ void Unit_RTC::getTime(rtc_time_type *RTC_TimeStruct) {
         buf[2] = _wire->read();
     }
 
-    RTC_TimeStruct->Seconds = Bcd2ToByte(buf[0] & 0x7f);  //秒
-    RTC_TimeStruct->Minutes = Bcd2ToByte(buf[1] & 0x7f);  //分
-    RTC_TimeStruct->Hours   = Bcd2ToByte(buf[2] & 0x3f);  //时
+    RTC_TimeStruct->Seconds = Bcd2ToByte(buf[0] & 0x7f);  // 秒
+    RTC_TimeStruct->Minutes = Bcd2ToByte(buf[1] & 0x7f);  // 分
+    RTC_TimeStruct->Hours   = Bcd2ToByte(buf[2] & 0x3f);  // 时
 }
 
-int Unit_RTC::setTime(rtc_time_type *RTC_TimeStruct) {
-    if (RTC_TimeStruct == NULL || RTC_TimeStruct->Hours > 24 ||
-        RTC_TimeStruct->Minutes > 60 || RTC_TimeStruct->Seconds > 60)
+int Unit_RTC::setTime(rtc_time_type *RTC_TimeStruct)
+{
+    if (RTC_TimeStruct == NULL || RTC_TimeStruct->Hours > 24 || RTC_TimeStruct->Minutes > 60 ||
+        RTC_TimeStruct->Seconds > 60)
         return 0;
 
     _wire->beginTransmission(DEVICE_ADDR);
@@ -145,7 +157,8 @@ int Unit_RTC::setTime(rtc_time_type *RTC_TimeStruct) {
     return 1;
 }
 
-void Unit_RTC::getDate(rtc_date_type *RTC_DateStruct) {
+void Unit_RTC::getDate(rtc_date_type *RTC_DateStruct)
+{
     uint8_t buf[4] = {0};
 
     _wire->beginTransmission(DEVICE_ADDR);
@@ -171,9 +184,10 @@ void Unit_RTC::getDate(rtc_date_type *RTC_DateStruct) {
     }
 }
 
-int Unit_RTC::setDate(rtc_date_type *RTC_DateStruct) {
-    if (RTC_DateStruct == NULL || RTC_DateStruct->WeekDay > 7 ||
-        RTC_DateStruct->Date > 31 || RTC_DateStruct->Month > 12)
+int Unit_RTC::setDate(rtc_date_type *RTC_DateStruct)
+{
+    if (RTC_DateStruct == NULL || RTC_DateStruct->WeekDay > 7 || RTC_DateStruct->Date > 31 ||
+        RTC_DateStruct->Month > 12)
         return 0;
     _wire->beginTransmission(DEVICE_ADDR);
     _wire->write(0x05);
@@ -193,7 +207,8 @@ int Unit_RTC::setDate(rtc_date_type *RTC_DateStruct) {
     return 1;
 }
 
-int Unit_RTC::setAlarmIRQ(int afterSeconds) {
+int Unit_RTC::setAlarmIRQ(int afterSeconds)
+{
     uint8_t reg_value = 0;
     reg_value         = ReadReg(0x01);
 
@@ -224,7 +239,8 @@ int Unit_RTC::setAlarmIRQ(int afterSeconds) {
     return afterSeconds * div;
 }
 
-int Unit_RTC::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct) {
+int Unit_RTC::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct)
+{
     uint8_t irq_enable = false;
     uint8_t out_buf[4] = {0x80, 0x80, 0x80, 0x80};
 
@@ -257,8 +273,8 @@ int Unit_RTC::setAlarmIRQ(const rtc_time_type &RTC_TimeStruct) {
     return irq_enable ? 1 : 0;
 }
 
-int Unit_RTC::setAlarmIRQ(const rtc_date_type &RTC_DateStruct,
-                          const rtc_time_type &RTC_TimeStruct) {
+int Unit_RTC::setAlarmIRQ(const rtc_date_type &RTC_DateStruct, const rtc_time_type &RTC_TimeStruct)
+{
     uint8_t irq_enable = false;
     uint8_t out_buf[4] = {0x80, 0x80, 0x80, 0x80};
 
@@ -298,11 +314,13 @@ int Unit_RTC::setAlarmIRQ(const rtc_date_type &RTC_DateStruct,
     return irq_enable ? 1 : 0;
 }
 
-void Unit_RTC::clearIRQ() {
+void Unit_RTC::clearIRQ()
+{
     uint8_t data = ReadReg(0x01);
     writeReg(0x01, data & 0xf3);
 }
-void Unit_RTC::disableIRQ() {
+void Unit_RTC::disableIRQ()
+{
     clearIRQ();
     uint8_t data = ReadReg(0x01);
     writeReg(0x01, data & 0xfC);

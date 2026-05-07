@@ -21,16 +21,17 @@ rtc_date_type rtc_date;
 
 char str_buffer[64];
 
-void showlog(rtc_time_type *rtc_time, rtc_date_type *rtc_date) {
-    sprintf(str_buffer, "RTC Time Now is %02d:%02d:%02d", rtc_time->Hours,
-            rtc_time->Minutes, rtc_time->Seconds);
+void showlog(rtc_time_type *rtc_time, rtc_date_type *rtc_date)
+{
+    sprintf(str_buffer, "RTC Time Now is %02d:%02d:%02d", rtc_time->Hours, rtc_time->Minutes, rtc_time->Seconds);
     Serial.println(str_buffer);
-    sprintf(str_buffer, "RTC Date Now is %02d:%02d:%02d WeekDay:%02d",
-            rtc_date->Year, rtc_date->Month, rtc_date->Date, rtc_date->WeekDay);
+    sprintf(str_buffer, "RTC Date Now is %02d:%02d:%02d WeekDay:%02d", rtc_date->Year, rtc_date->Month, rtc_date->Date,
+            rtc_date->WeekDay);
     Serial.println(str_buffer);
 }
 
-void setup() {
+void setup()
+{
     RTC.begin();
     Serial.begin(115200);
     delay(10);
@@ -47,7 +48,8 @@ void setup() {
     RTC.setDate(&rtc_date);
 }
 
-void loop() {
+void loop()
+{
     RTC.getTime(&rtc_time);
     RTC.getDate(&rtc_date);
 

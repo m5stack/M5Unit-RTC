@@ -6,6 +6,10 @@
  * @version  V0.0.2
  * @date  2022-07-29
  */
+#if defined(M5_UNIT_UNIFIED_RTC_HPP)
+#error "DO NOT USE it at the same time as M5UnitUnified libraries"
+#endif
+
 #ifndef _Unit_RTC_H__
 #define _Unit_RTC_H__
 
@@ -19,7 +23,8 @@ struct rtc_time_type {
     uint8_t Minutes;
     uint8_t Seconds;
     rtc_time_type(uint8_t hours = 0, uint8_t minutes = 0, uint8_t seconds = 0)
-        : Hours{hours}, Minutes{minutes}, Seconds{seconds} {
+        : Hours{hours}, Minutes{minutes}, Seconds{seconds}
+    {
     }
 };
 
@@ -28,14 +33,14 @@ struct rtc_date_type {
     uint8_t Month;
     uint8_t Date;
     uint8_t WeekDay;
-    rtc_date_type(uint16_t year = 2000, uint8_t month = 0, uint8_t date = 0,
-                  uint8_t weekDay = 0)
-        : Year{year}, Month{month}, Date{date}, WeekDay{weekDay} {
+    rtc_date_type(uint16_t year = 2000, uint8_t month = 0, uint8_t date = 0, uint8_t weekDay = 0)
+        : Year{year}, Month{month}, Date{date}, WeekDay{weekDay}
+    {
     }
 };
 
 class Unit_RTC {
-   private:
+private:
     void Bcd2asc(void);
     void DataMask();
     void Str2Time(void);
@@ -44,7 +49,7 @@ class Unit_RTC {
     uint8_t Bcd2ToByte(uint8_t Value);
     uint8_t ByteToBcd2(uint8_t Value);
 
-   private:
+private:
     /*定义数组用来存储读取的时间数据 */
     uint8_t _trdata[7];
     /*定义数组用来存储转换的 asc 码时间数据*/
@@ -52,7 +57,7 @@ class Unit_RTC {
     uint8_t _addr;
     TwoWire *_wire;
 
-   public:
+public:
     Unit_RTC();
     Unit_RTC(uint8_t addr);
     void begin();
@@ -68,13 +73,12 @@ class Unit_RTC {
 
     int setAlarmIRQ(int afterSeconds);
     int setAlarmIRQ(const rtc_time_type &RTC_TimeStruct);
-    int setAlarmIRQ(const rtc_date_type &RTC_DateStruct,
-                    const rtc_time_type &RTC_TimeStruct);
+    int setAlarmIRQ(const rtc_date_type &RTC_DateStruct, const rtc_time_type &RTC_TimeStruct);
 
     void clearIRQ();
     void disableIRQ();
 
-   public:
+public:
     uint8_t Second;
     uint8_t Minute;
     uint8_t Hour;

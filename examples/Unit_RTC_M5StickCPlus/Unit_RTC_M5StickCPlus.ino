@@ -23,12 +23,13 @@ rtc_date_type RTCdate;
 
 char str_buffer[64];
 
-void setup() {
+void setup()
+{
     M5.begin();             // Init M5StickCPlus.  初始化M5StickCPlus
     M5.Lcd.setRotation(3);  // Rotating display.  旋转显示屏
     M5.Lcd.setTextSize(2);  // Rotating display.  旋转显示屏
     M5.Lcd.print("        RTC");
-    RTC.begin();  // Example Initialize the RTC clock.  初始化RTC时钟
+    RTC.begin();           // Example Initialize the RTC clock.  初始化RTC时钟
     RTCtime.Hours   = 14;  // Set the RTC clock time.  设置RTC时钟时间
     RTCtime.Minutes = 40;
     RTCtime.Seconds = 5;
@@ -44,14 +45,14 @@ void setup() {
                             // 将设置的日期同步至RTC
 }
 
-void loop() {
+void loop()
+{
     RTC.getTime(&RTCtime);  // To get the time.  获取时间
     RTC.getDate(&RTCdate);  // Get the date.  获取日期
     M5.Lcd.setCursor(0, 20);
-    M5.Lcd.printf("RTC Time Now is \n%02d:%02d:%02d\n", RTCtime.Hours,
-                  RTCtime.Minutes, RTCtime.Seconds);
-    M5.Lcd.printf("RTC Date Now is \n%02d:%02d:%02d WeekDay:%02d\n",
-                  RTCdate.Year, RTCdate.Month, RTCdate.Date, RTCdate.WeekDay);
+    M5.Lcd.printf("RTC Time Now is \n%02d:%02d:%02d\n", RTCtime.Hours, RTCtime.Minutes, RTCtime.Seconds);
+    M5.Lcd.printf("RTC Date Now is \n%02d:%02d:%02d WeekDay:%02d\n", RTCdate.Year, RTCdate.Month, RTCdate.Date,
+                  RTCdate.WeekDay);
     delay(1000);
     M5.Lcd.fillRect(0, 20, 320, 140, BLACK);
 }
