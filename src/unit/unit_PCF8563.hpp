@@ -48,6 +48,11 @@ public:
 
     explicit UnitPCF8563(const uint8_t addr = DEFAULT_ADDRESS) : Component(addr)
     {
+        auto ccfg = component_config();
+        // fSCL max 400 kHz on PCF8563 / BM8563 / HYM8563
+        // (BM8563 datasheet lists tSU;STO min 4.0 us, but 400 kHz is used in practice, as in M5Unified)
+        ccfg.clock = 400 * 1000U;
+        component_config(ccfg);
     }
     virtual ~UnitPCF8563()
     {
