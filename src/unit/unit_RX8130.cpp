@@ -179,8 +179,25 @@ void IRAM_ATTR UnitRX8130::isr_handler(void* arg)
     self->_isr_fired = true;
 }
 
+UnitRX8130::~UnitRX8130()
+{
+    remove_isr();
+}
+
+void UnitRX8130::remove_isr()
+{
+    if (_isr_pin >= 0) {
+        gpio_isr_handler_remove(static_cast<gpio_num_t>(_isr_pin));
+        _isr_pin = -1;
+    }
+}
+
 bool UnitRX8130::begin()
 {
+    // Remove the handler of an earlier begin()
+    remove_isr();
+    _isr_fired = false;
+
     uint8_t flags{};
     if (!read_register8(FLAG_REG, flags)) {
         M5_LIB_LOGE("Failed to read FLAG");
@@ -248,6 +265,7 @@ bool UnitRX8130::begin()
             M5_LIB_LOGE("Failed to add ISR handler on pin %d", _cfg.int_pin);
             return false;
         }
+        _isr_pin = _cfg.int_pin;
         M5_LIB_LOGI("IRQ: hardware interrupt on pin %d", _cfg.int_pin);
     }
 

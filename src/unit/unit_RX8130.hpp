@@ -63,6 +63,10 @@ public:
         irq_callback_t on_update{nullptr};
     };
 
+    /*!
+      @brief Constructor
+      @param addr I2C address
+     */
     explicit UnitRX8130(const uint8_t addr = DEFAULT_ADDRESS) : Component(addr)
     {
         auto ccfg = component_config();
@@ -70,11 +74,23 @@ public:
         ccfg.clock = 400 * 1000U;
         component_config(ccfg);
     }
-    virtual ~UnitRX8130()
-    {
-    }
+    //! @brief Destructor (removes the ISR handler added by begin())
+    virtual ~UnitRX8130();
 
+    /*!
+      @brief Initialize the unit with config()
+      @return True if successful
+      @note If the oscillation stop flag (VLF) is set, the registers with undefined values are initialized
+            (the time stays invalid until writeDateTime()). Interrupts are disabled, the flags are kept so that
+            the wakeup source can be read. In the hardware interrupt mode it also sets up the GPIO and the ISR,
+            and fails if they fail
+     */
     virtual bool begin() override;
+    /*!
+      @brief Check the alarm / timer / update flags and invoke the callbacks
+      @param force Check now, regardless of polling_interval (polling mode)
+      @note Does nothing without on_alarm / on_timer / on_update
+     */
     virtual void update(const bool force = false) override;
 
     ///@name Settings for begin
@@ -676,7 +692,7 @@ public:
       @brief Set alarm by date and time
       @param date Date (can be nullptr). Negative fields are ignored. date takes precedence over weekDay
       @param time Time (can be nullptr). Negative fields are ignored.
-      @return 1 if enabled, 0 if disabled
+      @return 1 if enabled, 0 if disabled or on failure
      */
     int setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* time);
     //! @brief Set alarm by date and time (reference)
@@ -690,19 +706,21 @@ public:
         return setAlarmIRQ(nullptr, &time);
     }
     /*!
-      @brief Set timer-based alarm IRQ (deprecated, use setTimerIRQ)
-      @param afterSeconds Seconds until alarm (negative to disable)
-      @return Actual seconds set, or -1 if disabled
+      @brief Set the timer IRQ in seconds (same as setTimerIRQ(afterSeconds * 1000))
+      @param afterSeconds Timer period in seconds (negative to disable), limited to UINT32_MAX / 1000
+      @return Actual seconds set, -1 if disabled by a negative value, 0 if disabled by 0 or on failure
+      @note The timer repeats; see writeTimer()
      */
     int setAlarmIRQ(const int afterSeconds);
     /*!
       @brief Set timer IRQ in milliseconds
-      @param timer_msec Milliseconds until IRQ (0 to disable)
-      @return Actual milliseconds set (0 if disabled)
+      @param timer_msec Timer period in milliseconds (0 to disable)
+      @return Actual milliseconds set (0 if disabled or on failure)
+      @note The timer repeats; see writeTimer()
      */
     uint32_t setTimerIRQ(const uint32_t timer_msec);
 
-    //! @brief Get backup battery low status (VBLF, same as M5Unified)
+    //! @brief Get backup battery low status (VBLF, same as M5Unified; true also on I2C failure)
     inline bool getVoltLow()
     {
         bool low{};
@@ -712,7 +730,7 @@ public:
     bool getIRQstatus();
     //! @brief Clear IRQ flags (alarm and timer)
     void clearIRQ();
-    //! @brief Disable IRQ (disable alarm/timer interrupts and clear flags)
+    //! @brief Disable IRQ (AIE / TIE / UIE = 0, stop the wakeup timer (TE=0) and clear AF / TF / UF)
     void disableIRQ();
     /*!
       @brief Set system time from RTC
@@ -724,37 +742,37 @@ public:
 #endif  // defined(__M5_RTC_BASE_H__) || defined(__M5UNIFIED_HPP__)
 
 protected:
-    ///@name I2C register access
-    ///@{
+    // I2C register access
     bool read_register(const uint8_t reg, uint8_t* buf, const size_t len);
     bool read_register8(const uint8_t reg, uint8_t& val);
     bool write_register(const uint8_t reg, const uint8_t* buf, const size_t len);
     bool write_register8(const uint8_t reg, const uint8_t val);
-    //! @brief Read-modify-write of the masked bits
+    // Read-modify-write of the masked bits
     bool write_register_bits(const uint8_t reg, const uint8_t mask, const uint8_t bits);
-    ///@}
 
-    //! @brief Read time and/or date registers (nullable pointer support)
+    // Read time and/or date registers (nullable pointer support)
     bool read_datetime(rx8130::rtc_date_t* date, rx8130::rtc_time_t* time);
-    //! @brief Write time and/or date registers (nullable pointer support)
+    // Write time and/or date registers (nullable pointer support)
     bool write_datetime(const rx8130::rtc_date_t* date, const rx8130::rtc_time_t* time);
-    //! @brief Read a bit of a register
+    // Read a bit of a register
     bool read_bit(const uint8_t reg, const uint8_t bit, bool& on);
-    //! @brief Clear flags of the flag register (write 0 to clear)
+    // Clear flags of the flag register (write 0 to clear)
     bool clear_flags(const uint8_t bits);
-    //! @brief Clear VLF, retrying until the oscillation starts
+    // Clear VLF, retrying until the oscillation starts
     bool clear_vlf();
-    //! @brief Stop the wakeup timer (TE=0, TIE=0)
+    // Stop the wakeup timer (TE=0, TIE=0)
     bool stop_timer();
-    //! @brief Write alarm registers and WADA, then AIE
+    // Write alarm registers and WADA, then AIE
     bool write_alarm(const uint8_t min, const uint8_t hour, const uint8_t day_week, const bool wada, const bool enable);
 
 private:
     static void IRAM_ATTR isr_handler(void* arg);
     void check_irq_flags();
+    void remove_isr();
 
     config_t _cfg{};
     volatile bool _isr_fired{};
+    int16_t _isr_pin{-1};  // Pin with the ISR handler added by begin() (-1: none)
 };
 
 namespace rx8130 {
