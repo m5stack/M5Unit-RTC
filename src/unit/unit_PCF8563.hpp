@@ -35,10 +35,11 @@ public:
         //! GPIO pin connected to PCF8563 INT pin (-1: not connected)
         int16_t int_pin{-1};
         //! true: poll IRQ status via I2C in update(), false: use hardware interrupt via int_pin
+        //! (polls even if false when int_pin < 0)
         bool polling{true};
         //! CLKOUT pin output frequency (default: disabled)
         pcf8563::ClockOutput clkout{pcf8563::ClockOutput::None};
-        //! Polling interval in milliseconds for IRQ status check in update()
+        //! Polling interval in milliseconds for IRQ status check in update() (polling mode)
         uint32_t polling_interval{500};
         //! Callback invoked from update() when alarm fires (nullptr: disabled)
         irq_callback_t on_alarm{nullptr};
@@ -46,6 +47,10 @@ public:
         irq_callback_t on_timer{nullptr};
     };
 
+    /*!
+      @brief Constructor
+      @param addr I2C address
+     */
     explicit UnitPCF8563(const uint8_t addr = DEFAULT_ADDRESS) : Component(addr)
     {
         auto ccfg = component_config();
@@ -54,11 +59,21 @@ public:
         ccfg.clock = 400 * 1000U;
         component_config(ccfg);
     }
-    virtual ~UnitPCF8563()
-    {
-    }
+    //! @brief Destructor (removes the ISR handler added by begin())
+    virtual ~UnitPCF8563();
 
+    /*!
+      @brief Initialize the unit with config()
+      @return True if successful
+      @note Clears CONTROL1/CONTROL2, sets CLKOUT and stops the timer.
+            In the hardware interrupt mode it also sets up the GPIO and the ISR, and fails if they fail
+     */
     virtual bool begin() override;
+    /*!
+      @brief Check the alarm / timer flags and invoke the callbacks
+      @param force Check now, regardless of polling_interval (polling mode)
+      @note Does nothing without on_alarm / on_timer
+     */
     virtual void update(const bool force = false) override;
 
     ///@name Settings for begin
@@ -88,8 +103,8 @@ public:
     bool readTime(pcf8563::rtc_time_t& time);
     /*!
       @brief Write time to RTC
-      @param time Time (hours, minutes, seconds)
-      @return True if successful
+      @param time Time (hours 0-23, minutes 0-59, seconds 0-59)
+      @return True if successful, false if out of range or on failure
      */
     bool writeTime(const pcf8563::rtc_time_t& time);
     /*!
@@ -100,8 +115,8 @@ public:
     bool readDate(pcf8563::rtc_date_t& date);
     /*!
       @brief Write date to RTC
-      @param date Date (year, month, date, weekDay)
-      @return True if successful
+      @param date Date (year 1900-2099, month 1-12, date 1-31, weekDay 0-6 or negative to calculate it from the date)
+      @return True if successful, false if out of range or on failure
      */
     bool writeDate(const pcf8563::rtc_date_t& date);
     /*!
@@ -112,8 +127,8 @@ public:
     bool readDateTime(pcf8563::rtc_datetime_t& dt);
     /*!
       @brief Write date and time to RTC
-      @param dt DateTime
-      @return True if successful
+      @param dt DateTime (ranges as writeDate() / writeTime())
+      @return True if successful, false if out of range or on failure
      */
     bool writeDateTime(const pcf8563::rtc_datetime_t& dt);
     /*!
@@ -140,16 +155,25 @@ public:
       (4-pin: GND, VCC, SDA, SCL only).
 
       @note Two modes are supported via config_t:
-      - **Polling mode** (default, `polling=true`): update() periodically reads
-        the IRQ status register via I2C (every 500ms) and invokes the callback.
+      - **Polling mode** (default, `polling=true`, or `int_pin` < 0): update() reads
+        the IRQ status register via I2C every polling_interval ms and invokes the callback.
         Works without the INT pin (GROVE compatible).
       - **Hardware interrupt mode** (`polling=false`, `int_pin` set): begin()
-        calls attachInterrupt() on the specified GPIO. The ISR sets an internal
-        flag; update() detects it and invokes the callback. Requires a direct
-        connection from the PCF8563 INT pin to a host GPIO.
+        adds an ESP-IDF GPIO ISR (gpio_isr_handler_add) on the specified pin and fails if it cannot.
+        The ISR sets an internal flag; update() detects it and invokes the callback.
+        Requires a direct connection from the PCF8563 INT pin to a host GPIO.
 
       @note In both modes, callbacks (on_alarm / on_timer) are called from update(),
       never from an ISR context. Set them in config_t before calling begin().
+      update() does nothing without callbacks.
+
+      @note update() clears only the flags that have a callback; the others are left for
+      readAlarmFlag() / readTimerFlag(). In the hardware interrupt mode a flag with its interrupt
+      enabled is cleared too, since it would hold INT low and no further interrupt would arrive.
+
+      @note A flag is cleared by read-modify-write of CONTROL2, writing the other flag back as read
+      (on the Unit RTC writing 1 sets a flag, unlike the datasheets). The other flag set between
+      the read and the write is lost.
      */
     ///@name Alarm/Timer
     ///@{
@@ -157,7 +181,8 @@ public:
       @brief Set alarm and enable interrupt
       @param time Alarm time (minutes, hours). Negative fields are disabled.
       @param date Alarm date (date, weekDay). Negative fields are disabled.
-      @return True if successful
+      @return True if successful, false if a non-negative field is out of range
+              (minutes 0-59, hours 0-23, date 1-31, weekDay 0-6) or on failure
       @note Clears alarm flag, writes alarm registers, and enables alarm interrupt
             if any field is non-negative. Disables alarm interrupt if all fields are negative.
      */
@@ -442,7 +467,7 @@ public:
       @brief Set alarm by date and time
       @param date Date (can be nullptr). Negative fields are ignored.
       @param time Time (can be nullptr). Negative fields are ignored.
-      @return 1 if enabled, 0 if disabled
+      @return 1 if enabled, 0 if disabled or on failure
      */
     int setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* time);
     //! @brief Set alarm by date and time (reference)
@@ -456,19 +481,21 @@ public:
         return setAlarmIRQ(nullptr, &time);
     }
     /*!
-      @brief Set timer-based alarm IRQ (deprecated, use setTimerIRQ)
-      @param afterSeconds Seconds until alarm (negative to disable)
-      @return Actual seconds set, or -1 if disabled
+      @brief Set the timer IRQ in seconds (same as setTimerIRQ(afterSeconds * 1000))
+      @param afterSeconds Timer period in seconds (negative to disable), limited to UINT32_MAX / 1000
+      @return Actual seconds set, -1 if disabled by a negative value, 0 if disabled by 0 or on failure
+      @note The timer repeats; see writeTimer()
      */
     int setAlarmIRQ(const int afterSeconds);
     /*!
       @brief Set timer IRQ in milliseconds
-      @param timer_msec Milliseconds until IRQ (0 to disable)
-      @return Actual milliseconds set (0 if disabled)
+      @param timer_msec Timer period in milliseconds (0 to disable)
+      @return Actual milliseconds set (0 if disabled or on failure)
+      @note The timer repeats; see writeTimer()
      */
     uint32_t setTimerIRQ(const uint32_t timer_msec);
 
-    //! @brief Get voltage low status
+    //! @brief Get voltage low status (true also on I2C failure)
     inline bool getVoltLow()
     {
         bool low{};
@@ -500,29 +527,29 @@ public:
 #endif  // defined(__M5_RTC_BASE_H__) || defined(__M5UNIFIED_HPP__)
 
 protected:
-    ///@name I2C register access (stop bit centralized here for experimentation)
-    ///@{
+    // I2C register access (STOP between the address and data phases, see READ_STOP / WRITE_STOP)
     bool read_register(const uint8_t reg, uint8_t* buf, const size_t len);
     bool read_register8(const uint8_t reg, uint8_t& val);
     bool write_register(const uint8_t reg, const uint8_t* buf, const size_t len);
     bool write_register8(const uint8_t reg, const uint8_t val);
-    ///@}
 
-    //! @brief Read time and/or date registers (nullable pointer support)
+    // Read time and/or date registers (nullable pointer support)
     bool read_datetime(pcf8563::rtc_date_t* date, pcf8563::rtc_time_t* time);
-    //! @brief Write time and/or date registers (nullable pointer support)
+    // Write time and/or date registers (nullable pointer support)
     bool write_datetime(const pcf8563::rtc_date_t* date, const pcf8563::rtc_time_t* time);
-    //! @brief Read CONTROL2 register
+    // Read CONTROL2 register
     bool read_control2(uint8_t& val);
-    //! @brief Write CONTROL2 register with bit mask (read-modify-write)
+    // Write CONTROL2 register with bit mask (read-modify-write)
     bool write_control2_bits(const uint8_t mask, const uint8_t bits);
 
 private:
     static void IRAM_ATTR isr_handler(void* arg);
     void check_irq_flags();
+    void remove_isr();
 
     config_t _cfg{};
     volatile bool _isr_fired{};
+    int16_t _isr_pin{-1};  // Pin with the ISR handler added by begin() (-1: none)
 };
 
 namespace pcf8563 {

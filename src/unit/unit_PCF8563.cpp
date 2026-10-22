@@ -97,8 +97,25 @@ void IRAM_ATTR UnitPCF8563::isr_handler(void* arg)
     self->_isr_fired = true;
 }
 
+UnitPCF8563::~UnitPCF8563()
+{
+    remove_isr();
+}
+
+void UnitPCF8563::remove_isr()
+{
+    if (_isr_pin >= 0) {
+        gpio_isr_handler_remove(static_cast<gpio_num_t>(_isr_pin));
+        _isr_pin = -1;
+    }
+}
+
 bool UnitPCF8563::begin()
 {
+    // Remove the handler of an earlier begin()
+    remove_isr();
+    _isr_fired = false;
+
     // Clear control/status registers
     if (!write_register8(CONTROL1_REG, 0x00)) {
         M5_LIB_LOGE("Failed to write CONTROL1");
@@ -141,6 +158,7 @@ bool UnitPCF8563::begin()
             M5_LIB_LOGE("Failed to add ISR handler on pin %d", _cfg.int_pin);
             return false;
         }
+        _isr_pin = _cfg.int_pin;
         M5_LIB_LOGI("IRQ: hardware interrupt on pin %d", _cfg.int_pin);
     }
 
