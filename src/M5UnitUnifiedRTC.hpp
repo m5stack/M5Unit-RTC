@@ -18,12 +18,14 @@
 #define M5_UNIT_UNIFIED_RTC_HPP
 
 #include "unit/unit_PCF8563.hpp"
+#include "unit/unit_RX8130.hpp"
 
 namespace m5 {
 namespace unit {
-using UnitBM8563  = m5::unit::UnitPCF8563;
-using UnitHYM8563 = m5::unit::UnitPCF8563;
-using UnitRTC     = m5::unit::UnitPCF8563;  //!< @brief Alias for UnitRTC
+using UnitBM8563   = m5::unit::UnitPCF8563;
+using UnitHYM8563  = m5::unit::UnitPCF8563;
+using UnitRTC      = m5::unit::UnitPCF8563;  //!< @brief Alias for UnitRTC
+using UnitRX8130CE = m5::unit::UnitRX8130;
 }  // namespace unit
 }  // namespace m5
 #endif
