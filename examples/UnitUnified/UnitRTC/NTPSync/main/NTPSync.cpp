@@ -5,24 +5,33 @@
  */
 /*
   Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
-  - Sync time from NTP via WiFi, then set RTC
+  - Sync time from NTP via Wi-Fi, then set RTC
+  Wi-Fi uses esp_wifi directly (wifi_connect.hpp), so the same code builds with Arduino and ESP-IDF.
+  ESP32-H2 (NanoH2) has no Wi-Fi and is not supported by this example.
 */
 #include <M5Unified.h>
 #include <M5UnitUnified.h>
 #include <M5UnitUnifiedRTC.h>
 #include <wiring/m5_unit_unified_wiring.hpp>
-#include <WiFi.h>
-#include <esp_sntp.h>
+#include "wifi_connect.hpp"
+#include <esp_idf_version.h>
 #include <esp_random.h>
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+#include <esp_netif_sntp.h>
+#else
+#include <esp_sntp.h>
+#endif
+#include <sys/time.h>
 #include <algorithm>  // std::shuffle
 #include <cstdint>
+#include <cstdlib>
 
 namespace {
 // ==============================================================
-// NOTICE: Set your WiFi credentials and timezone before building
+// NOTICE: Set your Wi-Fi credentials and timezone before building
 // ==============================================================
-const char* WIFI_SSID = "";  // Your WiFi SSID
-const char* WIFI_PASS = "";  // Your WiFi password
+const char* WIFI_SSID = "";  // Your Wi-Fi SSID (empty: use the config stored in NVS by an earlier connection)
+const char* WIFI_PASS = "";  // Your Wi-Fi password
 // POSIX timezone string (default: JST-9 = UTC+9, no DST)
 const char* YOUR_TIMEZONE = "JST-9";
 // const char* YOUR_TIMEZONE = "EST5EDT,M3.2.0,M11.1.0";  // US Eastern (UTC-5, DST)
@@ -88,76 +97,72 @@ void display_printf(const char* fmt, ...)
     va_end(args);
 }
 
+// Get the time from the NTP servers in ntpURLTable and set the system clock (needs Wi-Fi)
+bool sync_sntp()
+{
+    constexpr uint32_t SYNC_TIMEOUT_MS{10000};
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+    // esp_netif_sntp takes the TCP/IP core lock itself. Three servers need CONFIG_LWIP_SNTP_MAX_SERVERS >= 3
+    // (sdkconfig.defaults for ESP-IDF; the Arduino core already uses 3)
+    esp_sntp_config_t cfg =
+        ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3, ESP_SNTP_SERVER_LIST(ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]));
+    if (esp_netif_sntp_init(&cfg) != ESP_OK) {
+        M5_LOGE("esp_netif_sntp_init failed");
+        return false;
+    }
+    const bool synced = (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(SYNC_TIMEOUT_MS)) == ESP_OK);
+    esp_netif_sntp_deinit();
+    return synced;
+#else
+    // ESP-IDF 4.4 (Arduino-ESP32 2.x)
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    for (int i = 0; i < 3; ++i) {
+        sntp_setservername(i, ntpURLTable[i]);
+    }
+    sntp_init();
+    auto timeout_at = m5::utility::millis() + SYNC_TIMEOUT_MS;
+    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && m5::utility::millis() < timeout_at) {
+        m5::utility::delay(100);
+    }
+    const bool synced = (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
+    sntp_stop();
+    return synced;
+#endif
+}
+
 // Sync NTP time and set RTC (shows progress on Display)
 bool sync_ntp_to_rtc()
 {
-    M5_LOGI("Connecting to WiFi: %s", WIFI_SSID);
-    display_printf("WiFi connecting");
-
-    // Tab5 (ESP32-P4) uses ESP32-C6 co-processor for WiFi via SDIO; set pins before WiFi.begin()
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-    if (M5.getBoard() == m5::board_t::board_M5Tab5) {
-        constexpr int SDIO2_CLK = 12;
-        constexpr int SDIO2_CMD = 13;
-        constexpr int SDIO2_D0  = 11;
-        constexpr int SDIO2_D1  = 10;
-        constexpr int SDIO2_D2  = 9;
-        constexpr int SDIO2_D3  = 8;
-        constexpr int SDIO2_RST = 15;
-        WiFi.setPins(SDIO2_CLK, SDIO2_CMD, SDIO2_D0, SDIO2_D1, SDIO2_D2, SDIO2_D3, SDIO2_RST);
-    }
-#endif
-
-    WiFi.mode(WIFI_STA);
-    if (WIFI_SSID[0] && WIFI_PASS[0]) {
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
-    } else {
-        WiFi.begin();
-    }
-
-    int retry = 20;
-    while (retry-- > 0 && WiFi.status() != WL_CONNECTED) {
-        display_printf(".");
-        m5::utility::delay(500);
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-        M5_LOGE("WiFi connection failed");
-        display_printf("\nWiFi FAILED\n");
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+    M5_LOGI("Connecting to Wi-Fi: %s", WIFI_SSID);
+    display_printf("Wi-Fi connecting\n");
+    if (!wifi_connect::connect(WIFI_SSID, WIFI_PASS)) {
+        M5_LOGE("Wi-Fi connection failed");
+        display_printf("Wi-Fi FAILED\n");
+        wifi_connect::disconnect();
         return false;
     }
-    M5_LOGI("WiFi connected");
-    display_printf("\nWiFi OK\n");
+    M5_LOGI("Wi-Fi connected");
+    display_printf("Wi-Fi OK\n");
 
     // Shuffle NTP servers
     std::shuffle(std::begin(ntpURLTable), std::end(ntpURLTable), ESP32RNG{});
     M5_LOGI("NTP: %s / %s / %s", ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
-    configTzTime(YOUR_TIMEZONE, ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
+    display_printf("NTP syncing\n");
+    const bool synced = sync_sntp();
 
-    // Wait for sync
-    display_printf("NTP syncing");
-    retry = 10;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && --retry >= 0) {
-        M5_LOGI("  NTP sync in progress...");
-        display_printf(".");
-        m5::utility::delay(1000);
-    }
+    // Done with Wi-Fi
+    wifi_connect::disconnect();
 
-    // Done with WiFi
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-
-    struct tm t {
-    };
-    if (!getLocalTime(&t, 10000)) {
+    if (!synced) {
         M5_LOGE("Failed to get NTP time");
-        display_printf("\nNTP FAILED\n");
+        display_printf("NTP FAILED\n");
         return false;
     }
+    time_t now_local = time(nullptr);
+    struct tm t      = *localtime(&now_local);
     M5_LOGI("NTP time: %04d-%02d-%02d %02d:%02d:%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
             t.tm_sec);
-    display_printf("\nNTP OK\n");
+    display_printf("NTP OK\n");
 
     // Set RTC from NTP (use GMT for RTC storage)
     // Stop RTC clock for precise time setting (prescaler held in reset)
@@ -215,7 +220,11 @@ void setup()
         M5_LOGW("RTC voltage low - time may be invalid");
     }
 
-    // Sync from NTP if WiFi credentials are configured
+    // Local time zone for localtime() (the RTC keeps GMT)
+    setenv("TZ", YOUR_TIMEZONE, 1);
+    tzset();
+
+    // Sync from NTP (Wi-Fi credentials in WIFI_SSID / WIFI_PASS, or the config stored in NVS)
     if (!sync_ntp_to_rtc()) {
         M5_LOGW("NTP sync skipped or failed - using current RTC time");
     }
@@ -274,3 +283,36 @@ void loop()
         lcd.endWrite();
     }
 }
+
+#if !defined(ARDUINO)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_timer.h>
+
+#if CONFIG_FREERTOS_UNICORE
+// Single-core SoCs: run loop() back-to-back, but every ~2 s yield a 5 ms slice so the IDLE task
+// runs and feeds the task watchdog (default 5 s).
+static inline void feedIdleTaskPeriodically(void)
+{
+    constexpr uint32_t FEED_INTERVAL_MS{2000};
+    constexpr TickType_t FEED_SLEEP_TICKS{pdMS_TO_TICKS(5)};
+    static uint32_t s_last_feed_ms{};
+    const uint32_t now_ms{static_cast<uint32_t>(esp_timer_get_time() / 1000)};
+    if (now_ms - s_last_feed_ms >= FEED_INTERVAL_MS) {
+        s_last_feed_ms = now_ms;
+        vTaskDelay(FEED_SLEEP_TICKS);
+    }
+}
+#endif
+
+extern "C" void app_main(void)
+{
+    setup();
+    for (;;) {
+#if CONFIG_FREERTOS_UNICORE
+        feedIdleTaskPeriodically();
+#endif
+        loop();
+    }
+}
+#endif
