@@ -805,61 +805,31 @@ TEST_F(TestPCF8563, CompatNullptr)
 }
 
 // ============================================================
-// Timer Periodic Mode
+// Timer /INT output mode (TI_TP)
 // ============================================================
 
-TEST_F(TestPCF8563, TimerPeriodic)
+TEST_F(TestPCF8563, TimerInterruptPulse)
 {
     SCOPED_TRACE(ustr);
 
-    // --- writeTimerPeriodic / readTimerPeriodic round-trip ---
-    {
-        SCOPED_TRACE("Periodic true");
-        EXPECT_TRUE(unit->writeTimerPeriodic(true));
+    for (auto pulse : {true, false}) {
+        auto s = m5::utility::formatString("Pulse %d", pulse);
+        SCOPED_TRACE(s);
+        EXPECT_TRUE(unit->writeTimerInterruptPulse(pulse));
+        bool rp{!pulse};
+        EXPECT_TRUE(unit->readTimerInterruptPulse(rp));
+        EXPECT_EQ(rp, pulse);
 
-        bool periodic{};
-        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
-        EXPECT_TRUE(periodic);
-    }
-
-    {
-        SCOPED_TRACE("Periodic false");
-        EXPECT_TRUE(unit->writeTimerPeriodic(false));
-
-        bool periodic{};
-        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
-        EXPECT_FALSE(periodic);
-    }
-
-    // --- writeTimer with repeat=true sets TI_TP ---
-    {
-        SCOPED_TRACE("writeTimer repeat=true");
-        uint32_t actual = unit->writeTimer(3000, true);
-        EXPECT_GT(actual, 0U);
-
-        bool periodic{};
-        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
-        EXPECT_TRUE(periodic);
-
+        // writeTimer keeps the /INT output mode
+        EXPECT_GT(unit->writeTimer(3000), 0U);
+        rp = !pulse;
+        EXPECT_TRUE(unit->readTimerInterruptPulse(rp));
+        EXPECT_EQ(rp, pulse);
         bool enabled{};
         TimerClock clk{};
         EXPECT_TRUE(unit->readTimerControl(enabled, clk));
         EXPECT_TRUE(enabled);
-
-        unit->writeTimer(0);
-    }
-
-    // --- writeTimer with repeat=false clears TI_TP ---
-    {
-        SCOPED_TRACE("writeTimer repeat=false");
-        uint32_t actual = unit->writeTimer(3000, false);
-        EXPECT_GT(actual, 0U);
-
-        bool periodic{};
-        EXPECT_TRUE(unit->readTimerPeriodic(periodic));
-        EXPECT_FALSE(periodic);
-
-        unit->writeTimer(0);
+        EXPECT_EQ(unit->writeTimer(0), 0U);
     }
 }
 
@@ -931,4 +901,119 @@ TEST_F(TestPCF8563, CompatSetSystemTime)
     EXPECT_EQ(t->tm_mday, 6);
     EXPECT_EQ(t->tm_hour, 12);
     EXPECT_EQ(t->tm_min, 0);
+}
+
+// ============================================================
+// The timer repeats (the PCF8563 has no one-shot mode) until writeTimer(0)
+// ============================================================
+
+TEST_F(TestPCF8563, TimerRepeats)
+{
+    SCOPED_TRACE(ustr);
+
+    // Without a callback, update() leaves TF for readTimerFlag()
+    EXPECT_EQ(unit->writeTimer(1000), 1000U);
+    bool fired{};
+    for (int i = 0; i < 2; ++i) {
+        auto s = m5::utility::formatString("Count %d", i);
+        SCOPED_TRACE(s);
+        const auto start_at = m5::utility::millis();
+        do {
+            Units.update();
+            m5::utility::delay(10);
+            EXPECT_TRUE(unit->readTimerFlag(fired));
+        } while (!fired && !m5::utility::hasElapsed(start_at, 2500));
+        EXPECT_TRUE(fired);
+        EXPECT_TRUE(unit->clearTimerFlag());
+    }
+    bool enabled{};
+    TimerClock clk{};
+    EXPECT_TRUE(unit->readTimerControl(enabled, clk));
+    EXPECT_TRUE(enabled);
+
+    EXPECT_EQ(unit->writeTimer(0), 0U);
+    EXPECT_TRUE(unit->readTimerControl(enabled, clk));
+    EXPECT_FALSE(enabled);
+    bool ie{true};
+    EXPECT_TRUE(unit->readTimerInterrupt(ie));
+    EXPECT_FALSE(ie);
+}
+
+// ============================================================
+// Invalid values are rejected; a negative weekday is calculated
+// ============================================================
+
+TEST_F(TestPCF8563, InvalidValues)
+{
+    SCOPED_TRACE(ustr);
+
+    EXPECT_FALSE(unit->writeTime(rtc_time_t(24, 0, 0)));
+    EXPECT_FALSE(unit->writeTime(rtc_time_t(0, 60, 0)));
+    EXPECT_FALSE(unit->writeTime(rtc_time_t(0, 0, 60)));
+    EXPECT_FALSE(unit->writeTime(rtc_time_t(-1, 0, 0)));
+    EXPECT_FALSE(unit->writeDate(rtc_date_t(1899, 12, 31, 0)));
+    EXPECT_FALSE(unit->writeDate(rtc_date_t(2100, 1, 1, 5)));
+    EXPECT_FALSE(unit->writeDate(rtc_date_t(2026, 13, 1, 0)));
+    EXPECT_FALSE(unit->writeDate(rtc_date_t(2026, 1, 0, 0)));
+    EXPECT_FALSE(unit->writeDate(rtc_date_t(2026, 1, 1, 7)));
+
+    EXPECT_FALSE(unit->writeAlarm(rtc_time_t(24, 0, -1), rtc_date_t(2000, 1, -1, -1)));
+    EXPECT_FALSE(unit->writeAlarm(rtc_time_t(0, 60, -1), rtc_date_t(2000, 1, -1, -1)));
+    EXPECT_FALSE(unit->writeAlarm(rtc_time_t(0, 0, -1), rtc_date_t(2000, 1, 0, -1)));
+    EXPECT_FALSE(unit->writeAlarm(rtc_time_t(0, 0, -1), rtc_date_t(2000, 1, 32, -1)));
+    EXPECT_FALSE(unit->writeAlarm(rtc_time_t(0, 0, -1), rtc_date_t(2000, 1, -1, 7)));
+
+    // Weekday is calculated when negative
+    EXPECT_TRUE(unit->writeDate(rtc_date_t(2026, 10, 22, -1)));  // Thursday
+    rtc_date_t rd{};
+    EXPECT_TRUE(unit->readDate(rd));
+    EXPECT_EQ(rd.weekDay, 4);
+    EXPECT_TRUE(unit->writeDate(rtc_date_t(1999, 12, 31, -1)));  // Friday
+    EXPECT_TRUE(unit->readDate(rd));
+    EXPECT_EQ(rd.year, 1999);
+    EXPECT_EQ(rd.weekDay, 5);
+    EXPECT_TRUE(unit->writeDate(rtc_date_t(2000, 2, 29, -1)));  // Tuesday (January / February branch)
+    EXPECT_TRUE(unit->readDate(rd));
+    EXPECT_EQ(rd.weekDay, 2);
+}
+
+// ============================================================
+// Writing CONTROL2 keeps the flag that is not cleared, and does not set it
+// (on the Unit RTC writing 1 to AF/TF sets the flag, unlike the datasheets)
+// ============================================================
+
+TEST_F(TestPCF8563, FlagsKept)
+{
+    SCOPED_TRACE(ustr);
+
+    // Let the alarm fire (AF)
+    EXPECT_TRUE(unit->writeDateTime(rtc_datetime_t(rtc_date_t(2026, 10, 22, 4), rtc_time_t(12, 0, 58))));
+    EXPECT_TRUE(unit->writeAlarm(rtc_time_t(12, 1, -1), rtc_date_t(2000, 1, -1, -1)));
+    bool af{};
+    auto start_at = m5::utility::millis();
+    do {
+        m5::utility::delay(10);
+        EXPECT_TRUE(unit->readAlarmFlag(af));
+    } while (!af && !m5::utility::hasElapsed(start_at, 3500));
+    EXPECT_TRUE(af);
+
+    // Clearing TF and changing the other CONTROL2 bits keep AF
+    EXPECT_TRUE(unit->clearTimerFlag());
+    EXPECT_TRUE(unit->writeTimerInterrupt(false));
+    EXPECT_EQ(unit->writeTimer(0), 0U);
+    EXPECT_TRUE(unit->readAlarmFlag(af));
+    EXPECT_TRUE(af);
+
+    EXPECT_TRUE(unit->clearAlarmFlag());
+    EXPECT_TRUE(unit->readAlarmFlag(af));
+    EXPECT_FALSE(af);
+    EXPECT_TRUE(unit->writeAlarmInterrupt(false));
+
+    // Clearing one flag does not set the other
+    bool tf{true};
+    EXPECT_TRUE(unit->readTimerFlag(tf));
+    EXPECT_FALSE(tf);
+    EXPECT_TRUE(unit->clearTimerFlag());
+    EXPECT_TRUE(unit->readAlarmFlag(af));
+    EXPECT_FALSE(af);
 }

@@ -6,6 +6,7 @@
 /*
   Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
   - Countdown timer using writeTimer() convenience API
+    The timer repeats in hardware; the one-shot modes stop it with writeTimer(0) when it fires
   - BtnA click: cycle interval and repeat mode
     5s repeat -> 10s repeat -> 30s repeat -> 5s oneshot -> 10s oneshot -> stop -> ...
 */
@@ -87,7 +88,7 @@ void start_timer()
         return;
     }
 
-    uint32_t actual = unit.writeTimer(static_cast<uint32_t>(m.seconds) * 1000, m.repeat);
+    uint32_t actual = unit.writeTimer(static_cast<uint32_t>(m.seconds) * 1000);
     M5.Log.printf("Timer: %lu ms, %s\n", (unsigned long)actual, m.repeat ? "repeat" : "oneshot");
 }
 
@@ -168,6 +169,10 @@ void loop()
         indicator_lit = true;
         M5.Log.printf("Timer fired! count=%lu\n", (unsigned long)timer_count);
         M5.Speaker.tone(2000, 20);
+        // The PCF8563 has no one-shot timer; stop it here for the one-shot modes
+        if (!MODES[mode_idx].repeat) {
+            unit.writeTimer(0);
+        }
         prev = 0;  // force redraw
     }
 

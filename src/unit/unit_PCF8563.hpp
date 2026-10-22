@@ -194,15 +194,26 @@ public:
     bool clearAlarmFlag();
 
     /*!
-      @brief Set countdown timer with millisecond duration
-      @param msec Duration in milliseconds (0 to disable)
-      @param repeat True for periodic (auto-reload via TI_TP), false for one-shot
-      @return Actual duration in milliseconds (0 if disabled)
+      @brief Set the countdown timer with a millisecond period
+      @param msec Period in milliseconds, rounded to seconds (0 or less than 500 to disable)
+      @return Actual period in milliseconds (0 if disabled or on failure)
+      @note The timer repeats: the PCF8563 reloads the countdown every period and sets TF each time
+            (it has no one-shot mode). Stop it with writeTimer(0), e.g. in the on_timer callback.
       @note Automatically selects Hz1 (< 270s) or HzPM (>= 270s) clock source.
-            Clears timer/alarm flags, enables timer and timer interrupt.
-            Maximum: 255 minutes (15,300,000 ms).
+            Clears the timer flag (the alarm flag is kept), enables timer and timer interrupt.
+            The /INT output mode (TI_TP) is kept. Maximum: 255 minutes (15,300,000 ms).
      */
-    uint32_t writeTimer(const uint32_t msec, const bool repeat = false);
+    uint32_t writeTimer(const uint32_t msec);
+    /*!
+      @brief Set the countdown timer (the repeat argument is ignored)
+      @deprecated The PCF8563 has no one-shot timer. Use writeTimer(msec), and stop it with writeTimer(0)
+     */
+    [[deprecated("The PCF8563 has no one-shot timer. Use writeTimer(msec) and stop it with writeTimer(0)")]] uint32_t
+    writeTimer(const uint32_t msec, const bool repeat)
+    {
+        (void)repeat;
+        return writeTimer(msec);
+    }
     /*!
       @brief Read timer control settings
       @param[out] enabled True if timer is enabled (TE bit)
@@ -253,21 +264,31 @@ public:
      */
     bool clearTimerFlag();
     /*!
-      @brief Read timer periodic mode (TI_TP bit)
-      @param[out] periodic True if periodic (auto-reload), false if one-shot
+      @brief Read the /INT output mode of the timer (TI_TP bit)
+      @param[out] pulse True if /INT pulses every countdown, false if /INT follows TF (stays active until cleared)
       @return True if successful
-      @note When periodic, the countdown timer automatically restarts from the
-            preset value each time it reaches zero. TF flag is set each time.
+      @note The countdown timer always repeats regardless of this bit
      */
-    bool readTimerPeriodic(bool& periodic);
+    bool readTimerInterruptPulse(bool& pulse);
     /*!
-      @brief Write timer periodic mode (TI_TP bit)
-      @param periodic True for periodic (auto-reload), false for one-shot
+      @brief Write the /INT output mode of the timer (TI_TP bit)
+      @param pulse True to pulse /INT every countdown, false to make /INT follow TF (stays active until cleared)
       @return True if successful
-      @note When periodic, the countdown timer automatically restarts from the
-            preset value each time it reaches zero. TF flag is set each time.
+      @note The countdown timer always repeats regardless of this bit
      */
-    bool writeTimerPeriodic(const bool periodic);
+    bool writeTimerInterruptPulse(const bool pulse);
+    //! @deprecated TI_TP selects the /INT output mode, not periodic / one-shot. Use readTimerInterruptPulse()
+    [[deprecated("TI_TP selects the /INT output mode, not periodic / one-shot. Use readTimerInterruptPulse()")]] bool
+    readTimerPeriodic(bool& periodic)
+    {
+        return readTimerInterruptPulse(periodic);
+    }
+    //! @deprecated TI_TP selects the /INT output mode, not periodic / one-shot. Use writeTimerInterruptPulse()
+    [[deprecated("TI_TP selects the /INT output mode, not periodic / one-shot. Use writeTimerInterruptPulse()")]] bool
+    writeTimerPeriodic(const bool periodic)
+    {
+        return writeTimerInterruptPulse(periodic);
+    }
     ///@}
 
     ///@name Clock Control
