@@ -17,6 +17,7 @@
 #endif
 
 #include "unit_RX8130.hpp"
+#include "../utility/rtc_utility.hpp"
 #include <algorithm>
 #include <cmath>
 #include <M5Utility.hpp>
@@ -71,20 +72,11 @@ constexpr uint8_t ALARM_AE{0x80};
 
 constexpr uint8_t USER_RAM_SIZE{4};
 
-inline uint8_t bcd2byte(const uint8_t bcd)
-{
-    return ((bcd >> 4) * 10) + (bcd & 0x0F);
-}
-
-inline uint8_t byte2bcd(const uint8_t val)
-{
-    return ((val / 10) << 4) | (val % 10);
-}
-
-inline bool is_valid_bcd(const uint8_t bcd)
-{
-    return (bcd & 0x0F) <= 9 && (bcd >> 4) <= 9;
-}
+using m5::unit::rtc::bcd2byte;
+using m5::unit::rtc::byte2bcd;
+using m5::unit::rtc::day_of_week;
+using m5::unit::rtc::is_valid_bcd;
+using m5::unit::rtc::is_valid_time;
 
 inline bool is_single_bit(const uint8_t v)
 {
@@ -115,23 +107,10 @@ uint8_t writable_mask(const uint8_t reg)
     }
 }
 
-// Day of week (0:Sunday) by Sakamoto's method
-int8_t day_of_week(const int16_t year, const int8_t month, const int8_t date)
+// The RX8130 covers 2000-2099. A negative weekDay is calculated from the date
+inline bool is_valid_date(const rtc_date_t& d)
 {
-    static constexpr int8_t table[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
-    const int y                     = year - (month < 3);
-    return static_cast<int8_t>((y + y / 4 - y / 100 + y / 400 + table[month - 1] + date) % 7);
-}
-
-bool is_valid_time(const rtc_time_t& t)
-{
-    return t.hours >= 0 && t.hours <= 23 && t.minutes >= 0 && t.minutes <= 59 && t.seconds >= 0 && t.seconds <= 59;
-}
-
-bool is_valid_date(const rtc_date_t& d)
-{
-    return d.year >= 2000 && d.year <= 2099 && d.month >= 1 && d.month <= 12 && d.date >= 1 && d.date <= 31 &&
-           d.weekDay <= 6;
+    return m5::unit::rtc::is_valid_date(d, 2000, 2099);
 }
 
 // Wakeup timer source clocks in the order they are tried. period = mul_ms / div [ms]
