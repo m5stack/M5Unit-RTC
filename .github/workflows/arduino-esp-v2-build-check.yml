@@ -2,7 +2,7 @@ name: Build(arduino-esp32:2.x)
 
 env:
   SKETCH_NAMES_FIND_START: ./examples/UnitUnified
-  REQUIRED_LIBRARIES: M5Unified,M5UnitUnified
+  REQUIRED_LIBRARIES: M5Unified,M5UnitUnified,M5Unit-HUB
 
 on:
   push:
@@ -12,28 +12,28 @@ on:
     branches:
       - '*'
     paths:
-      - 'src/unit/**.cpp'
-      - 'src/unit/**.hpp'
-      - 'src/unit/**.h'
-      - 'src/unit/**.c'
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
       - 'examples/UnitUnified/**.ino'
       - 'examples/UnitUnified/**.cpp'
       - 'examples/UnitUnified/**.hpp'
       - 'examples/UnitUnified/**.h'
       - 'examples/UnitUnified/**.c'
-      - '**arduino-esp-v2-build-check.yml'
+      - '.github/workflows/arduino-esp-v2-build-check.yml'
   pull_request:
     paths:
-      - 'src/unit/**.cpp'
-      - 'src/unit/**.hpp'
-      - 'src/unit/**.h'
-      - 'src/unit/**.c'
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
       - 'examples/UnitUnified/**.ino'
       - 'examples/UnitUnified/**.cpp'
       - 'examples/UnitUnified/**.hpp'
       - 'examples/UnitUnified/**.h'
       - 'examples/UnitUnified/**.c'
-      - '**arduino-esp-v2-build-check.yml'
+      - '.github/workflows/arduino-esp-v2-build-check.yml'
   workflow_dispatch:
 
 defaults:
@@ -46,7 +46,7 @@ concurrency:
 
 jobs:
   build:
-    name: ${{ matrix.sketch }}:${{matrix.board}}@${{matrix.platform-version}}
+    name: ${{ matrix.unit }}:${{ matrix.sketch }}:${{matrix.board}}@${{matrix.platform-version}}
     runs-on: ubuntu-latest
     timeout-minutes: 12
 
@@ -57,17 +57,24 @@ jobs:
         platform-url:
           - https://espressif.github.io/arduino-esp32/package_esp32_index.json
 
+        unit:
+          - UnitRTC
+
         sketch:
           - NTPSync
+          # The hub example goes through UnitPaHub (M5Unit-HUB), so it is built on every representative board
+          - ViaPaHub
 
         board:
-          - m5stack-atom
-          - m5stack-atoms3
+          # Reduced from 7 to 2 boards: ESP32 and ESP32-S3 (core 2.0.x has no C6 / H2 / P4).
+          # The other boards differ only in the variant header, so the library code compiles the same.
+#          - m5stack-atom  # ESP32: represented by m5stack-core-esp32
+#          - m5stack-atoms3  # ESP32-S3: represented by m5stack-cores3
           - m5stack-core-esp32
-          - m5stack-core2
-          - m5stack-coreink
+#          - m5stack-core2  # ESP32: represented by m5stack-core-esp32
+#          - m5stack-coreink  # ESP32: represented by m5stack-core-esp32
           - m5stack-cores3
-          - m5stack-fire
+#          - m5stack-fire  # ESP32: represented by m5stack-core-esp32
 
         platform-version:
           - 2.0.17
@@ -78,14 +85,17 @@ jobs:
         archi:
           - esp32
 
+        # AlarmNotify / PeriodicTimer are built on the Core only
         include:
-          - sketch: AlarmNotify
+          - unit: UnitRTC
+            sketch: AlarmNotify
             platform-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
             platform: esp32
             archi: esp32
             platform-version: 2.0.17
             board: m5stack-core-esp32
-          - sketch: PeriodicTimer
+          - unit: UnitRTC
+            sketch: PeriodicTimer
             platform-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
             platform: esp32
             archi: esp32
@@ -96,14 +106,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Build
+      - name: Prepare libraries list
+        id: libs
+        run: |
+          {
+            echo "yaml<<EOF"
+            echo "$REQUIRED_LIBRARIES${{ matrix.extra-libraries }}" | tr ',' '\n' | while read -r lib; do
+              [ -n "$lib" ] && echo "- name: $lib"
+            done
+            echo "- source-path: ./"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Compile examples
-        uses: ArminJo/arduino-test-compile@master
+        uses: arduino/compile-sketches@v1
         with:
-          arduino-board-fqbn: ${{ matrix.platform }}:${{ matrix.archi }}:${{ matrix.board }}
-          arduino-platform: ${{ matrix.platform }}:${{ matrix.archi }}@${{ matrix.platform-version }}
-          platform-url: ${{ matrix.platform-url }}
-          required-libraries: ${{ env.REQUIRED_LIBRARIES }}
-          extra-arduino-cli-args: ${{ matrix.cli-args }}
-          sketch-names: ${{ matrix.sketch }}.ino
-          sketch-names-find-start: ${{ env.SKETCH_NAMES_FIND_START }}/
+          fqbn: ${{ matrix.platform }}:${{ matrix.archi }}:${{ matrix.board }}
+          platforms: |
+            - name: ${{ matrix.platform }}:${{ matrix.archi }}
+              source-url: ${{ matrix.platform-url }}
+              version: ${{ matrix.platform-version }}
+          libraries: ${{ steps.libs.outputs.yaml }}
+          sketch-paths: |
+            - ${{ env.SKETCH_NAMES_FIND_START }}/${{ matrix.unit }}/${{ matrix.sketch }}

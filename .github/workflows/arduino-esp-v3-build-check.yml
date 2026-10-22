@@ -2,7 +2,7 @@ name: Build(arduino-esp32:3.x)
 
 env:
   SKETCH_NAMES_FIND_START: ./examples/UnitUnified
-  REQUIRED_LIBRARIES: M5Unified,M5UnitUnified
+  REQUIRED_LIBRARIES: M5Unified,M5UnitUnified,M5Unit-HUB
 
 on:
   push:
@@ -12,28 +12,28 @@ on:
     branches:
       - '*'
     paths:
-      - 'src/unit/**.cpp'
-      - 'src/unit/**.hpp'
-      - 'src/unit/**.h'
-      - 'src/unit/**.c'
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
       - 'examples/UnitUnified/**.ino'
       - 'examples/UnitUnified/**.cpp'
       - 'examples/UnitUnified/**.hpp'
       - 'examples/UnitUnified/**.h'
       - 'examples/UnitUnified/**.c'
-      - '**arduino-esp-v3-build-check.yml'
+      - '.github/workflows/arduino-esp-v3-build-check.yml'
   pull_request:
     paths:
-      - 'src/unit/**.cpp'
-      - 'src/unit/**.hpp'
-      - 'src/unit/**.h'
-      - 'src/unit/**.c'
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
       - 'examples/UnitUnified/**.ino'
       - 'examples/UnitUnified/**.cpp'
       - 'examples/UnitUnified/**.hpp'
       - 'examples/UnitUnified/**.h'
       - 'examples/UnitUnified/**.c'
-      - '**arduino-esp-v3-build-check.yml'
+      - '.github/workflows/arduino-esp-v3-build-check.yml'
   workflow_dispatch:
 
 defaults:
@@ -46,7 +46,7 @@ concurrency:
 
 jobs:
   build:
-    name: ${{ matrix.sketch }}:${{matrix.board}}@${{matrix.platform-version}}
+    name: ${{ matrix.unit }}:${{ matrix.sketch }}:${{matrix.board}}@${{matrix.platform-version}}
     runs-on: ubuntu-latest
     timeout-minutes: 12
 
@@ -57,31 +57,47 @@ jobs:
         platform-url:
           - https://espressif.github.io/arduino-esp32/package_esp32_index.json
 
+        unit:
+          - UnitRTC
+
         sketch:
           - NTPSync
+          # The hub example goes through UnitPaHub (M5Unit-HUB), so it is built on every representative board
+          - ViaPaHub
 
         board:
-          - arduino_nesso_n1
-          - m5stack_atom
-          - m5stack_atoms3
-          - m5stack_capsule
+          # Reduced from 18 to 5 boards: one per chip, plus m5stack_cardputer for its own PSRAM / USB build properties.
+          # The other boards differ only in the variant header, so the library code compiles the same.
+#          - arduino_nesso_n1  # ESP32-C6: represented by m5stack_nanoc6
+#          - m5stack_atom  # ESP32: represented by m5stack_core
+#          - m5stack_atoms3  # ESP32-S3: represented by m5stack_cores3
+#          - m5stack_capsule  # ESP32-S3: represented by m5stack_cores3
           - m5stack_cardputer
           - m5stack_core
-          - m5stack_core2
-          - m5stack_coreink
+#          - m5stack_core2  # ESP32: represented by m5stack_core
+#          - m5stack_coreink  # ESP32: represented by m5stack_core
           - m5stack_cores3
-          - m5stack_dial
-          - m5stack_dinmeter
-          - m5stack_fire
+#          - m5stack_dial  # ESP32-S3: represented by m5stack_cores3
+#          - m5stack_dinmeter  # ESP32-S3: represented by m5stack_cores3
+#          - m5stack_fire  # ESP32: represented by m5stack_core
           - m5stack_nanoc6
-          - m5stack_paper
-          - m5stack_stamp_s3
-          - m5stack_stickc_plus
-          - m5stack_stickc_plus2
+#          - m5stack_paper  # ESP32: represented by m5stack_core
+#          - m5stack_poe_cam
+#          - m5stack_stamp_c3
+#          - m5stack_stamp_pico
+#          - m5stack_stamp_s3  # ESP32-S3: represented by m5stack_cores3
+#          - m5stack_station
+#          - m5stack_stickc
+#          - m5stack_stickc_plus  # ESP32: represented by m5stack_core
+#          - m5stack_stickc_plus2  # ESP32: represented by m5stack_core
           - m5stack_tab5
+#          - m5stack_timer_cam
+#          - m5stack_tough
+#          - m5stack_unit_cam
+#          - m5stack_unit_cams3
 
         platform-version:
-          - 3.3.6
+          - 3.3.12
 
         platform:
           - esp32
@@ -89,32 +105,47 @@ jobs:
         archi:
           - esp32
 
+        # AlarmNotify / PeriodicTimer are built on the Core only
         include:
-          - sketch: AlarmNotify
+          - unit: UnitRTC
+            sketch: AlarmNotify
             platform-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
             platform: esp32
             archi: esp32
-            platform-version: 3.3.6
+            platform-version: 3.3.12
             board: m5stack_core
-          - sketch: PeriodicTimer
+          - unit: UnitRTC
+            sketch: PeriodicTimer
             platform-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
             platform: esp32
             archi: esp32
-            platform-version: 3.3.6
+            platform-version: 3.3.12
             board: m5stack_core
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Build
+      - name: Prepare libraries list
+        id: libs
+        run: |
+          {
+            echo "yaml<<EOF"
+            echo "$REQUIRED_LIBRARIES${{ matrix.extra-libraries }}" | tr ',' '\n' | while read -r lib; do
+              [ -n "$lib" ] && echo "- name: $lib"
+            done
+            echo "- source-path: ./"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Compile examples
-        uses: ArminJo/arduino-test-compile@master
+        uses: arduino/compile-sketches@v1
         with:
-          arduino-board-fqbn: ${{ matrix.platform }}:${{ matrix.archi }}:${{ matrix.board }}
-          arduino-platform: ${{ matrix.platform }}:${{ matrix.archi }}@${{ matrix.platform-version }}
-          platform-url: ${{ matrix.platform-url }}
-          required-libraries: ${{ env.REQUIRED_LIBRARIES }}
-          extra-arduino-cli-args: ${{ matrix.cli-args }}
-          sketch-names: ${{ matrix.sketch }}.ino
-          sketch-names-find-start: ${{ env.SKETCH_NAMES_FIND_START }}/
+          fqbn: ${{ matrix.platform }}:${{ matrix.archi }}:${{ matrix.board }}
+          platforms: |
+            - name: ${{ matrix.platform }}:${{ matrix.archi }}
+              source-url: ${{ matrix.platform-url }}
+              version: ${{ matrix.platform-version }}
+          libraries: ${{ steps.libs.outputs.yaml }}
+          sketch-paths: |
+            - ${{ env.SKETCH_NAMES_FIND_START }}/${{ matrix.unit }}/${{ matrix.sketch }}
