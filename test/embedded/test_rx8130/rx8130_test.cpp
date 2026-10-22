@@ -44,7 +44,8 @@ protected:
         I2CComponentTestBase<UnitRX8130>::SetUp();
         if (unit) {
             unit->disableIRQ();
-            struct tm t{};
+            struct tm t {
+            };
             _saved    = unit->readDateTime(t);
             _saved_at = mktime(&t);
             _saved_ms = m5::utility::millis();
@@ -206,7 +207,8 @@ TEST_F(TestRX8130, DateTime)
         EXPECT_EQ(rdt, wdt);
         EXPECT_EQ(rdt.date.weekDay, 4);
 
-        struct tm t{};
+        struct tm t {
+        };
         EXPECT_TRUE(unit->readDateTime(t));
         EXPECT_EQ(t.tm_year, 126);
         EXPECT_EQ(t.tm_mon, 9);

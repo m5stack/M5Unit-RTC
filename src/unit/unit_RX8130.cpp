@@ -1123,7 +1123,8 @@ void UnitRX8130::setSystemTimeFromRtc(struct timezone* tz)
     }
     struct tm t = dt.to_tm();
 
-    struct timeval tv{};
+    struct timeval tv {
+    };
     tv.tv_sec = mktime(&t);
     settimeofday(&tv, tz);
 }
