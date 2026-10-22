@@ -1,0 +1,8 @@
+# ESP-IDF defaults for the NTPSync example (applied after common/sdkconfig.defaults).
+
+# Three NTP servers are configured (ESP-IDF's default is one; the Arduino core uses three)
+CONFIG_LWIP_SNTP_MAX_SERVERS=3
+
+# Wi-Fi + SNTP + M5Unified do not fit the 1 MB app partition of the default single-app layout;
+# use the standard 1.5 MB one
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y

@@ -38,6 +38,22 @@ M5UnitUnified is a library for unified handling of various M5 units products.
 ### Examples
 See also [examples/UnitUnified](examples/UnitUnified)
 
+#### For ESP-IDF settings
+
+> **NOTE:** The ESP-IDF native build (`idf.py`) targets ESP-IDF **5.1 or later** (5.x and 6.x).
+> The conventional library (`Unit_RTC.h`) is for Arduino only and is not built under ESP-IDF.
+
+The examples need no Kconfig choice. Build them directly:
+
+```sh
+cd examples/UnitUnified/UnitRTC/PeriodicTimer
+idf.py set-target esp32s3               # or esp32 / esp32c5 / esp32c6 / esp32h2 / esp32p4 / ...
+idf.py build flash monitor
+```
+
+NTPSync uses Wi-Fi, so it does not support ESP32-H2 (NanoH2). On ESP32-P4 (Tab5) the Wi-Fi runs on the ESP32-C6
+co-processor (esp_hosted), which needs ESP-IDF 5.3 or later.
+
 ### Doxygen document
 [GitHub Pages](https://m5stack.github.io/M5Unit-RTC/)
 
