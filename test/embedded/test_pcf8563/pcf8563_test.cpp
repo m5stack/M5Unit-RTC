@@ -1017,3 +1017,58 @@ TEST_F(TestPCF8563, FlagsKept)
     EXPECT_TRUE(unit->readAlarmFlag(af));
     EXPECT_FALSE(af);
 }
+
+// ============================================================
+// update() clears only the flags that have a callback
+// ============================================================
+
+TEST_F(TestPCF8563, UpdateClearsHandledFlags)
+{
+    SCOPED_TRACE(ustr);
+
+    // Polling with on_alarm only: TF is left for readTimerFlag()
+    auto cfg     = unit->config();
+    cfg.polling  = true;
+    cfg.on_alarm = []() {};
+    cfg.on_timer = nullptr;
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());  // config_t is applied by begin()
+
+    auto wait_tf = [this]() {
+        bool f{};
+        const auto start_at = m5::utility::millis();
+        do {
+            m5::utility::delay(10);
+            EXPECT_TRUE(unit->readTimerFlag(f));
+        } while (!f && !m5::utility::hasElapsed(start_at, 2500));
+        return f;
+    };
+
+    EXPECT_EQ(unit->writeTimer(1000), 1000U);
+    EXPECT_TRUE(wait_tf());
+    unit->update(true);
+    bool fired{};
+    EXPECT_TRUE(unit->readTimerFlag(fired));
+    EXPECT_TRUE(fired);  // no on_timer: kept
+    EXPECT_EQ(unit->writeTimer(0), 0U);
+
+    // With on_timer, update() clears TF
+    bool called{};
+    static bool* called_ptr{};
+    called_ptr   = &called;
+    cfg.on_timer = []() { *called_ptr = true; };
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());
+    EXPECT_EQ(unit->writeTimer(1000), 1000U);
+    EXPECT_TRUE(wait_tf());
+    unit->update(true);
+    EXPECT_TRUE(called);
+    EXPECT_TRUE(unit->readTimerFlag(fired));
+    EXPECT_FALSE(fired);
+    EXPECT_EQ(unit->writeTimer(0), 0U);
+
+    cfg.on_alarm = nullptr;
+    cfg.on_timer = nullptr;
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());
+}

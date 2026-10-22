@@ -73,14 +73,14 @@ protected:
     }
 
     // writeTimer() always sets TIE. Where /IRQ is not allowed, pause the countdown (TSTP) until TIE is cleared
-    uint32_t start_timer(const uint32_t msec, const bool repeat)
+    uint32_t start_timer(const uint32_t msec)
     {
         if (irq_output_allowed()) {
-            return unit->writeTimer(msec, repeat);
+            return unit->writeTimer(msec);
         }
         EXPECT_TRUE(unit->writeTimerCountMode(TimerCountMode::Always));  // TSTP is ignored when TBKE = 1
         EXPECT_TRUE(unit->writeTimerPause(true));
-        auto actual = unit->writeTimer(msec, repeat);
+        auto actual = unit->writeTimer(msec);
         EXPECT_TRUE(unit->writeTimerInterrupt(false));
         EXPECT_TRUE(unit->writeTimerPause(false));
         return actual;
@@ -501,7 +501,7 @@ TEST_F(TestRX8130, Timer)
         for (auto& e : table) {
             auto s = m5::utility::formatString("msec %u", e.msec);
             SCOPED_TRACE(s);
-            auto actual = unit->writeTimer(e.msec, true);
+            auto actual = unit->writeTimer(e.msec);
             EXPECT_NEAR(static_cast<double>(actual), static_cast<double>(e.msec), e.msec / 256.0 + 1);
 
             bool enabled{}, ie{};
@@ -528,7 +528,7 @@ TEST_F(TestRX8130, Timer)
     // --- Timer fires (periodic) ---
     {
         SCOPED_TRACE("Periodic");
-        EXPECT_EQ(start_timer(500, true), 500U);
+        EXPECT_EQ(start_timer(500), 500U);
         for (int i = 0; i < 3; ++i) {
             EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1000));
             EXPECT_TRUE(unit->clearTimerFlag());
@@ -540,22 +540,25 @@ TEST_F(TestRX8130, Timer)
         EXPECT_EQ(unit->writeTimer(0), 0U);
     }
 
-    // --- Timer fires (one-shot, stopped by update) ---
+    // --- The timer repeats (no one-shot mode); update() without callbacks leaves TF ---
     {
-        SCOPED_TRACE("Oneshot");
-        EXPECT_EQ(start_timer(500, false), 500U);
-        auto timeout_at = m5::utility::millis() + 1500;
-        bool enabled{true};
-        TimerClock clk{};
+        SCOPED_TRACE("Repeats");
+        EXPECT_EQ(start_timer(500), 500U);
+        bool fired{};
+        const auto start_at = m5::utility::millis();
         do {
             Units.update();
             m5::utility::delay(10);
-            EXPECT_TRUE(unit->readTimerControl(enabled, clk));
-        } while (enabled && m5::utility::millis() <= timeout_at);
+            EXPECT_TRUE(unit->readTimerFlag(fired));
+        } while (!fired && !m5::utility::hasElapsed(start_at, 1500));
+        EXPECT_TRUE(fired);
+        bool enabled{};
+        TimerClock clk{};
+        EXPECT_TRUE(unit->readTimerControl(enabled, clk));
+        EXPECT_TRUE(enabled);
+        EXPECT_EQ(unit->writeTimer(0), 0U);
+        EXPECT_TRUE(unit->readTimerControl(enabled, clk));
         EXPECT_FALSE(enabled);
-        bool fired{true};
-        EXPECT_TRUE(unit->readTimerFlag(fired));
-        EXPECT_FALSE(fired);  // cleared by update
     }
 }
 
@@ -692,8 +695,8 @@ TEST_F(TestRX8130, Status)
 {
     SCOPED_TRACE(ustr);
 
-    // Writing the time clears VLF
-    EXPECT_TRUE(unit->writeTime(rtc_time_t(12, 0, 0)));
+    // Writing the date and time clears VLF
+    EXPECT_TRUE(unit->writeDateTime(rtc_datetime_t(rtc_date_t(2026, 10, 23, 5), rtc_time_t(12, 0, 0))));
     bool b{true};
     EXPECT_TRUE(unit->readVoltLow(b));
     EXPECT_FALSE(b);
@@ -902,4 +905,85 @@ TEST_F(TestRX8130, CompatAPI)
         EXPECT_EQ(t.tm_mday, 22);
         EXPECT_EQ(t.tm_hour, 10);
     }
+}
+
+// ============================================================
+// Clearing a flag does not set or clear the others
+// (the flags are cleared by writing 0, and writing 1 must leave them unchanged)
+// ============================================================
+
+TEST_F(TestRX8130, FlagsKept)
+{
+    SCOPED_TRACE(ustr);
+
+    // No alarm match during the test (AF is set on a match even with AIE=0)
+    EXPECT_TRUE(unit->writeAlarm(rtc_time_t(-1, -1, -1), rtc_date_t(2000, 1, -1, -1)));
+    EXPECT_TRUE(unit->clearAlarmFlag());
+    EXPECT_TRUE(unit->clearTimerFlag());
+    EXPECT_TRUE(unit->clearUpdateFlag());
+    // UF is set every second (even with UIE=0)
+    EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readUpdateFlag(f); }, 1500));
+
+    // Clearing TF keeps UF and does not set AF
+    EXPECT_TRUE(unit->clearTimerFlag());
+    bool uf{}, af{true}, tf{true};
+    EXPECT_TRUE(unit->readUpdateFlag(uf));
+    EXPECT_TRUE(uf);
+    EXPECT_TRUE(unit->readAlarmFlag(af));
+    EXPECT_FALSE(af);
+
+    // Clearing UF does not set AF / TF
+    EXPECT_TRUE(unit->clearUpdateFlag());
+    EXPECT_TRUE(unit->readUpdateFlag(uf));
+    EXPECT_FALSE(uf);
+    EXPECT_TRUE(unit->readAlarmFlag(af));
+    EXPECT_FALSE(af);
+    EXPECT_TRUE(unit->readTimerFlag(tf));
+    EXPECT_FALSE(tf);
+}
+
+// ============================================================
+// update() clears only the flags that have a callback
+// ============================================================
+
+TEST_F(TestRX8130, UpdateClearsHandledFlags)
+{
+    SCOPED_TRACE(ustr);
+
+    // Polling with on_alarm only: TF is left for readTimerFlag()
+    auto cfg      = unit->config();
+    cfg.polling   = true;
+    cfg.on_alarm  = []() {};
+    cfg.on_timer  = nullptr;
+    cfg.on_update = nullptr;
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());  // config_t is applied by begin()
+
+    EXPECT_EQ(start_timer(500), 500U);  // TIE=0 where /IRQ is not allowed (Tab5)
+    bool fired{};
+    EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1500));
+    unit->update(true);
+    EXPECT_TRUE(unit->readTimerFlag(fired));
+    EXPECT_TRUE(fired);  // no on_timer: kept
+    EXPECT_EQ(unit->writeTimer(0), 0U);
+
+    // With on_timer, update() clears TF
+    bool called{};
+    static bool* called_ptr{};
+    called_ptr   = &called;
+    cfg.on_timer = []() { *called_ptr = true; };
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());
+    EXPECT_EQ(start_timer(500), 500U);
+    EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1500));
+    unit->update(true);
+    EXPECT_TRUE(called);
+    EXPECT_TRUE(unit->readTimerFlag(fired));
+    EXPECT_FALSE(fired);
+    EXPECT_EQ(unit->writeTimer(0), 0U);
+
+    cfg.on_alarm = nullptr;
+    cfg.on_timer = nullptr;
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());
 }

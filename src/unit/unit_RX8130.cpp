@@ -213,7 +213,11 @@ bool UnitRX8130::begin()
         M5_LIB_LOGW("Oscillation stop detected. Time is invalid until set");
         const uint8_t alarm[3] = {ALARM_AE, ALARM_AE, ALARM_AE};
         const uint8_t timer[2] = {0x00, 0x00};
-        if (!write_register(ALARM_MINUTES_REG, alarm, sizeof(alarm)) ||
+        // Stop the timer (TE=0) and clear WADA / TSEL before the preset is written.
+        // CONTROL1: SMPTSEL / RSVSEL / BFVSEL to the power-on defaults (CHGEN / INIEN are set below)
+        if (!write_register_bits(EXTENSION_REG, EXT_TE | EXT_WADA | EXT_TSEL, 0) ||
+            !write_register_bits(CONTROL1_REG, CTRL1_SMPTSEL | CTRL1_RSVSEL | CTRL1_BFVSEL, 0) ||
+            !write_register(ALARM_MINUTES_REG, alarm, sizeof(alarm)) ||
             !write_register(TIMER_COUNTER0_REG, timer, sizeof(timer)) || !write_register8(DIGITAL_OFFSET_REG, 0x00) ||
             !write_register8(EXTENSION1_REG, 0x00)) {
             M5_LIB_LOGE("Failed to initialize registers");
@@ -242,7 +246,6 @@ bool UnitRX8130::begin()
         M5_LIB_LOGE("Failed to write CONTROL1");
         return false;
     }
-    _timer_oneshot = false;
 
     // Setup hardware interrupt if configured
     if (!_cfg.polling && _cfg.int_pin >= 0) {
@@ -276,8 +279,8 @@ bool UnitRX8130::begin()
 
 void UnitRX8130::update(const bool force)
 {
-    // Nothing to do without callbacks or a one-shot timer to stop
-    if (!_cfg.on_alarm && !_cfg.on_timer && !_cfg.on_update && !_timer_oneshot) {
+    // Nothing to do without callbacks
+    if (!_cfg.on_alarm && !_cfg.on_timer && !_cfg.on_update) {
         return;
     }
 
@@ -304,7 +307,21 @@ void UnitRX8130::check_irq_flags()
         _isr_fired = !_cfg.polling;  // retry on the next update
         return;
     }
-    const uint8_t fired = flags & (FLAG_AF | FLAG_TF | FLAG_UF);
+    // Handle (and clear) only the flags that have a callback; the others are left for the read functions.
+    // In the hardware interrupt mode a flag with its interrupt enabled is cleared too: AF holds /IRQ low,
+    // and no further falling edge (the ISR trigger) would arrive
+    uint8_t handled{static_cast<uint8_t>((_cfg.on_alarm ? FLAG_AF : 0) | (_cfg.on_timer ? FLAG_TF : 0) |
+                                         (_cfg.on_update ? FLAG_UF : 0))};
+    if (!_cfg.polling && _cfg.int_pin >= 0) {
+        uint8_t ctrl0{};
+        if (!read_register8(CONTROL0_REG, ctrl0)) {
+            _isr_fired = true;  // retry on the next update
+            return;
+        }
+        handled |= ((ctrl0 & CTRL0_AIE) ? FLAG_AF : 0) | ((ctrl0 & CTRL0_TIE) ? FLAG_TF : 0) |
+                   ((ctrl0 & CTRL0_UIE) ? FLAG_UF : 0);
+    }
+    const uint8_t fired{static_cast<uint8_t>(flags & handled)};
     if (!fired) {
         return;
     }
@@ -318,18 +335,8 @@ void UnitRX8130::check_irq_flags()
     if ((fired & FLAG_AF) && _cfg.on_alarm) {
         _cfg.on_alarm();
     }
-    if (fired & FLAG_TF) {
-        // The wakeup timer always reloads the preset value; stop it for one-shot
-        if (_timer_oneshot) {
-            if (stop_timer()) {
-                _timer_oneshot = false;
-            } else {
-                M5_LIB_LOGW("Failed to stop oneshot timer");
-            }
-        }
-        if (_cfg.on_timer) {
-            _cfg.on_timer();
-        }
+    if ((fired & FLAG_TF) && _cfg.on_timer) {
+        _cfg.on_timer();
     }
     if ((fired & FLAG_UF) && _cfg.on_update) {
         _cfg.on_update();
@@ -384,6 +391,25 @@ bool UnitRX8130::clear_flags(const uint8_t bits)
 {
     // A single write leaves the other flags untouched (a read-modify-write would drop a flag raised in between)
     return write_register8(FLAG_REG, static_cast<uint8_t>(~bits));
+}
+
+bool UnitRX8130::clear_vlf()
+{
+    // VLF cannot be cleared until the oscillation starts (start-up time t_str is up to 1 s), so retry and verify
+    constexpr uint32_t RETRY_INTERVAL_MS{10};
+    constexpr int MAX_RETRY{100};
+    for (int retry{}; retry < MAX_RETRY; ++retry) {
+        uint8_t flags{};
+        if (!clear_flags(FLAG_VLF) || !read_register8(FLAG_REG, flags)) {
+            return false;
+        }
+        if (!(flags & FLAG_VLF)) {
+            return true;
+        }
+        m5::utility::delay(RETRY_INTERVAL_MS);
+    }
+    M5_LIB_LOGE("Failed to clear VLF (oscillation not started?)");
+    return false;
 }
 
 bool UnitRX8130::stop_timer()
@@ -482,20 +508,21 @@ bool UnitRX8130::write_datetime(const rx8130::rtc_date_t* date, const rx8130::rt
         M5_LIB_LOGE("Failed to write datetime");
         return false;
     }
-    // The time is valid again
-    return time ? clear_flags(FLAG_VLF) : true;
+    // The date and time are valid again only when both are written
+    return (time && date) ? clear_vlf() : true;
 }
 
 bool UnitRX8130::write_alarm(const uint8_t min, const uint8_t hour, const uint8_t day_week, const bool wada,
                              const bool enable)
 {
-    // Disable the interrupt while the alarm is changed, then clear a pending flag
-    if (!write_register_bits(CONTROL0_REG, CTRL0_AIE, 0) || !clear_flags(FLAG_AF)) {
+    // Sequence per datasheet (Figure 49): AIE=0 -> alarm registers -> WADA -> clear AF -> AIE=1,
+    // so a flag raised while the alarm is changed is cleared too
+    if (!write_register_bits(CONTROL0_REG, CTRL0_AIE, 0)) {
         return false;
     }
     const uint8_t buf[3] = {min, hour, day_week};
     if (!write_register(ALARM_MINUTES_REG, buf, sizeof(buf)) ||
-        !write_register_bits(EXTENSION_REG, EXT_WADA, wada ? EXT_WADA : 0)) {
+        !write_register_bits(EXTENSION_REG, EXT_WADA, wada ? EXT_WADA : 0) || !clear_flags(FLAG_AF)) {
         M5_LIB_LOGE("Failed to write alarm registers");
         return false;
     }
@@ -656,9 +683,8 @@ bool UnitRX8130::clearAlarmFlag()
 
 // ---- Wakeup timer ----
 
-uint32_t UnitRX8130::writeTimer(const uint32_t msec, const bool repeat)
+uint32_t UnitRX8130::writeTimer(const uint32_t msec)
 {
-    _timer_oneshot = false;
     if (msec == 0) {
         if (!stop_timer() || !clear_flags(FLAG_TF)) {
             M5_LIB_LOGW("Failed to disable timer");
@@ -693,7 +719,6 @@ uint32_t UnitRX8130::writeTimer(const uint32_t msec, const bool repeat)
         stop_timer();
         return 0;
     }
-    _timer_oneshot = !repeat;
 
     // Actual period rounded to the nearest ms (never 0 while running)
     const uint32_t result = (count * sel->mul_ms + (sel->div >> 1)) / sel->div;
@@ -720,7 +745,6 @@ bool UnitRX8130::writeTimerControl(const bool enabled, const rx8130::TimerClock 
         return false;
     }
     if (!enabled) {
-        _timer_oneshot = false;
         return true;
     }
     return write_register_bits(EXTENSION_REG, EXT_TE, EXT_TE);
@@ -740,7 +764,7 @@ bool UnitRX8130::readTimerValue(uint16_t& count)
             return false;
         }
         if (cur[0] == prev[0] && cur[1] == prev[1]) {
-            count = static_cast<uint16_t>(cur[0] | (cur[1] << 8));
+            count = m5::types::little_uint16_t{cur[0], cur[1]}.get();
             return true;
         }
         prev[0] = cur[0];
@@ -884,9 +908,8 @@ bool UnitRX8130::readDigitalOffset(bool& enabled, int8_t& steps)
     if (!read_register8(DIGITAL_OFFSET_REG, val)) {
         return false;
     }
-    enabled               = (val & OFFSET_DTE) != 0;
-    const uint8_t l_value = val & 0x7F;  // 7-bit two's complement
-    steps                 = static_cast<int8_t>((l_value & 0x40) ? l_value - 128 : l_value);
+    enabled = (val & OFFSET_DTE) != 0;
+    steps   = m5::utility::unsigned_to_signed<7>(static_cast<uint8_t>(val & 0x7F));  // 7-bit two's complement
     return true;
 }
 
@@ -1112,7 +1135,6 @@ void UnitRX8130::disableIRQ()
     write_register_bits(CONTROL0_REG, CTRL0_AIE | CTRL0_TIE | CTRL0_UIE, 0);
     write_register_bits(EXTENSION_REG, EXT_TE, 0);
     clear_flags(FLAG_TF | FLAG_AF | FLAG_UF);
-    _timer_oneshot = false;
 }
 
 void UnitRX8130::setSystemTimeFromRtc(struct timezone* tz)

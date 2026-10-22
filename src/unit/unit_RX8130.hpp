@@ -104,9 +104,10 @@ public:
     bool readTime(rx8130::rtc_time_t& time);
     /*!
       @brief Write time to RTC
-      @param time Time (hours, minutes, seconds)
-      @return True if successful
-      @note Writing the seconds clears the sub-second counter
+      @param time Time (hours 0-23, minutes 0-59, seconds 0-59)
+      @return True if successful, false if out of range or on failure
+      @note Writing the seconds clears the sub-second counter.
+            The oscillation stop flag (VLF) is kept, as the date may still be invalid; use writeDateTime()
      */
     bool writeTime(const rx8130::rtc_time_t& time);
     /*!
@@ -117,9 +118,10 @@ public:
     bool readDate(rx8130::rtc_date_t& date);
     /*!
       @brief Write date to RTC
-      @param date Date (year 2000-2099, month, date, weekDay)
-      @return True if successful
-      @note If weekDay is negative, it is calculated from the date
+      @param date Date (year 2000-2099, month 1-12, date 1-31, weekDay 0-6)
+      @return True if successful, false if out of range or on failure
+      @note If weekDay is negative, it is calculated from the date.
+            The oscillation stop flag (VLF) is kept, as the time may still be invalid; use writeDateTime()
      */
     bool writeDate(const rx8130::rtc_date_t& date);
     /*!
@@ -130,8 +132,10 @@ public:
     bool readDateTime(rx8130::rtc_datetime_t& dt);
     /*!
       @brief Write date and time to RTC
-      @param dt DateTime
-      @return True if successful
+      @param dt DateTime (ranges as writeDate() / writeTime())
+      @return True if successful, false if out of range or on failure
+      @note Clears the oscillation stop flag (VLF). It cannot be cleared until the oscillation starts,
+            so this retries for up to 1 s and returns false if VLF stays set
      */
     bool writeDateTime(const rx8130::rtc_datetime_t& dt);
     /*!
@@ -161,7 +165,11 @@ public:
         /IRQ pin to a host GPIO.
 
       @note In both modes, callbacks are called from update(), never from an ISR context.
-      Set them in config_t before calling begin().
+      Set them in config_t before calling begin(). update() does nothing without callbacks.
+
+      @note update() clears only the flags that have a callback; the others are left for the read functions.
+      In the hardware interrupt mode a flag with its interrupt enabled is cleared too
+      (AF holds /IRQ low, and no further interrupt would arrive).
      */
     ///@name Alarm
     ///@{
@@ -224,15 +232,14 @@ public:
     ///@name Wakeup timer
     ///@{
     /*!
-      @brief Set wakeup timer with millisecond duration
-      @param msec Duration in milliseconds (0 to disable)
-      @param repeat True for periodic, false for one-shot
-      @return Actual duration in milliseconds (0 if disabled or failed)
+      @brief Set the wakeup timer with a millisecond period
+      @param msec Period in milliseconds (0 to disable)
+      @return Actual period in milliseconds (0 if disabled or failed)
+      @note The timer repeats: the RX8130 reloads the preset every period and sets TF each time
+            (it has no one-shot mode). Stop it with writeTimer(0), e.g. in the on_timer callback.
       @note Selects the source clock automatically. Clears timer flag, enables timer and timer interrupt.
-      @note The chip timer is always periodic. In one-shot mode, update() stops the timer
-            after the first event (the timer keeps running unless update() is called)
      */
-    uint32_t writeTimer(const uint32_t msec, const bool repeat = false);
+    uint32_t writeTimer(const uint32_t msec);
     /*!
       @brief Read timer control settings
       @param[out] enabled True if timer is enabled (TE bit)
@@ -408,7 +415,7 @@ public:
       @brief Read oscillation stop flag
       @param[out] low True if oscillation stop was detected (VLF bit). Time data are invalid
       @return True if successful
-      @note Cleared when the time is written, or by clearVoltLow()
+      @note Cleared when the date and time are written together (writeDateTime()), or by clearVoltLow()
      */
     bool readVoltLow(bool& low);
     /*!
@@ -579,6 +586,8 @@ public:
       @param date Date (can be nullptr to skip)
       @param time Time (can be nullptr to skip)
       @return True if successful
+      @note The oscillation stop flag (VLF, see readVoltLow()) is cleared only when both date and time are
+            given. setDate() / setTime() alone keep it
      */
     inline bool setDateTime(const m5::rtc_date_t* date, const m5::rtc_time_t* time)
     {
@@ -619,22 +628,22 @@ public:
     {
         return dt ? setDateTime(&dt->date, &dt->time) : false;
     }
-    //! @brief Set date only (pointer)
+    //! @brief Set date only (pointer, VLF is kept)
     inline bool setDate(const m5::rtc_date_t* date)
     {
         return setDateTime(date, nullptr);
     }
-    //! @brief Set date only (reference)
+    //! @brief Set date only (reference, VLF is kept)
     inline bool setDate(const m5::rtc_date_t& date)
     {
         return setDateTime(&date, nullptr);
     }
-    //! @brief Set time only (pointer)
+    //! @brief Set time only (pointer, VLF is kept)
     inline bool setTime(const m5::rtc_time_t* time)
     {
         return setDateTime(nullptr, time);
     }
-    //! @brief Set time only (reference)
+    //! @brief Set time only (reference, VLF is kept)
     inline bool setTime(const m5::rtc_time_t& time)
     {
         return setDateTime(nullptr, &time);
@@ -733,6 +742,8 @@ protected:
     bool read_bit(const uint8_t reg, const uint8_t bit, bool& on);
     //! @brief Clear flags of the flag register (write 0 to clear)
     bool clear_flags(const uint8_t bits);
+    //! @brief Clear VLF, retrying until the oscillation starts
+    bool clear_vlf();
     //! @brief Stop the wakeup timer (TE=0, TIE=0)
     bool stop_timer();
     //! @brief Write alarm registers and WADA, then AIE
@@ -744,7 +755,6 @@ private:
 
     config_t _cfg{};
     volatile bool _isr_fired{};
-    bool _timer_oneshot{};
 };
 
 namespace rx8130 {
