@@ -55,4 +55,10 @@ If you want to output Git commit hashes to html, do it for the git cloned folder
 - [pcregrep](https://formulae.brew.sh/formula/pcre2)
 - [Git](https://git-scm.com/) (Output commit hash to html)
 
- 
+## Support via [PaHub](https://docs.m5stack.com/en/unit/Unit-PaHub%20v2.1)
+
+|Unit|Support|Note|
+|---|---|---|
+|UnitRTC|OK||
+
+See also the [ViaPaHub](examples/UnitUnified/UnitRTC/ViaPaHub) example and [M5Unit-HUB](https://github.com/m5stack/M5Unit-HUB)
