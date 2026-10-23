@@ -1140,3 +1140,32 @@ TEST_F(TestPCF8563, Running)
         EXPECT_EQ(rdt.time.minutes, 0);
     }
 }
+
+// ============================================================
+// begin() keeps the flags (the wakeup source) and disables the interrupts
+// ============================================================
+
+TEST_F(TestPCF8563, BeginKeepsFlags)
+{
+    SCOPED_TRACE(ustr);
+
+    EXPECT_EQ(unit->writeTimer(1000), 1000U);
+    bool tf{};
+    const auto start_at = m5::utility::millis();
+    do {
+        m5::utility::delay(10);
+        EXPECT_TRUE(unit->readTimerFlag(tf));
+    } while (!tf && !m5::utility::hasElapsed(start_at, 2500));
+    EXPECT_TRUE(tf);
+
+    EXPECT_TRUE(unit->begin());
+    EXPECT_TRUE(unit->readTimerFlag(tf));
+    EXPECT_TRUE(tf);  // kept
+    bool ie{true}, enabled{true};
+    TimerClock clk{};
+    EXPECT_TRUE(unit->readTimerInterrupt(ie));
+    EXPECT_FALSE(ie);
+    EXPECT_TRUE(unit->readTimerControl(enabled, clk));
+    EXPECT_FALSE(enabled);
+    EXPECT_TRUE(unit->clearTimerFlag());
+}

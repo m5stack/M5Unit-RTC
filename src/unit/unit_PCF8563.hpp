@@ -65,7 +65,8 @@ public:
     /*!
       @brief Initialize the unit with config()
       @return True if successful
-      @note Clears CONTROL1/CONTROL2, sets CLKOUT and stops the timer.
+      @note Clears CONTROL1, disables the interrupts (the flags are kept so that the wakeup source can be read),
+            sets CLKOUT and stops the timer.
             In the hardware interrupt mode it also sets up the GPIO and the ISR, and fails if they fail
      */
     virtual bool begin() override;

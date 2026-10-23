@@ -99,7 +99,8 @@ bool UnitPCF8563::begin()
         M5_LIB_LOGE("Failed to write CONTROL1");
         return false;
     }
-    if (!write_register8(CONTROL2_REG, 0x00)) {
+    // Interrupts disabled, TI_TP=0. The flags (AF/TF) are kept so that the wakeup source can be read after begin
+    if (!write_control2_bits(CTRL2_AIE | CTRL2_TIE | CTRL2_TI_TP, 0)) {
         M5_LIB_LOGE("Failed to write CONTROL2");
         return false;
     }
