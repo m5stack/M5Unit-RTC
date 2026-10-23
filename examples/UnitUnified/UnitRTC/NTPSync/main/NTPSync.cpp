@@ -120,8 +120,9 @@ bool sync_sntp()
         sntp_setservername(i, ntpURLTable[i]);
     }
     sntp_init();
-    auto timeout_at = m5::utility::millis() + SYNC_TIMEOUT_MS;
-    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && m5::utility::millis() < timeout_at) {
+    const auto start_at = m5::utility::millis();
+    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED &&
+           !m5::utility::hasElapsed(start_at, SYNC_TIMEOUT_MS)) {
         m5::utility::delay(100);
     }
     const bool synced = (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
@@ -260,12 +261,18 @@ void loop()
 
     if (M5.BtnA.wasClicked()) {
         // Read and show RTC (GMT)
-        auto dt = unit.getDateTime();
-        M5.Log.printf("RTC(GMT) %04d-%02d-%02d(%s) %02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
-                      WDAY_NAMES[dt.date.weekDay % 7], dt.time.hours, dt.time.minutes, dt.time.seconds);
+        m5::unit::pcf8563::rtc_datetime_t dt{};
         lcd.startWrite();
-        display_printf("RTC(GMT)\n%04d-%02d-%02d(%s)\n%02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
-                       WDAY_NAMES[dt.date.weekDay % 7], dt.time.hours, dt.time.minutes, dt.time.seconds);
+        if (unit.readDateTime(dt)) {
+            const char* wday{(dt.date.weekDay >= 0 && dt.date.weekDay <= 6) ? WDAY_NAMES[dt.date.weekDay] : "---"};
+            M5.Log.printf("RTC(GMT) %04d-%02d-%02d(%s) %02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
+                          wday, dt.time.hours, dt.time.minutes, dt.time.seconds);
+            display_printf("RTC(GMT)\n%04d-%02d-%02d(%s)\n%02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
+                           wday, dt.time.hours, dt.time.minutes, dt.time.seconds);
+        } else {
+            M5_LOGE("Failed to read the RTC");
+            display_printf("RTC read failed\n");
+        }
         lcd.endWrite();
     } else if (M5.BtnA.wasHold()) {
         // Re-sync RTC from NTP (progress shown on Display)

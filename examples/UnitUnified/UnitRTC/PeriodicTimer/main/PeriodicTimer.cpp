@@ -126,13 +126,16 @@ void setup()
     // Sync system clock from RTC (stored as GMT) and set timezone
     {
         m5::unit::pcf8563::rtc_datetime_t dt{};
-        unit.readDateTime(dt);
-        struct tm gmt = dt.to_tm();
-        time_t t      = mktime(&gmt);
-        struct timeval tv {
-            t, 0
-        };
-        settimeofday(&tv, nullptr);
+        if (unit.readDateTime(dt)) {
+            struct tm gmt = dt.to_tm();
+            time_t t      = mktime(&gmt);  // TZ is not set yet, so this is UTC
+            struct timeval tv {
+                t, 0
+            };
+            settimeofday(&tv, nullptr);
+        } else {
+            M5_LOGW("Failed to read the RTC, the system clock is not set");
+        }
         setenv("TZ", YOUR_TIMEZONE, 1);
         tzset();
         M5_LOGI("System clock set from RTC (GMT), TZ=%s", YOUR_TIMEZONE);
