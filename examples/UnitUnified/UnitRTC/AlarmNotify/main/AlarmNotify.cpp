@@ -13,6 +13,7 @@
 #include <M5UnitUnifiedRTC.h>
 #include <wiring/m5_unit_unified_wiring.hpp>
 #include <sys/time.h>
+#include <algorithm>
 #include <cstdint>
 
 namespace {
@@ -31,6 +32,10 @@ constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 
 auto& lcd = M5.Display;
 LGFX_Sprite canvas(&lcd);
+// The canvas holds 20 columns x 8 rows of the 6x8 font and is zoomed to fit the display
+constexpr int32_t CANVAS_WIDTH{20 * 6};
+constexpr int32_t CANVAS_HEIGHT{8 * 8};
+float canvas_zoom{1.0f};
 m5::unit::UnitUnified Units;
 m5::unit::UnitRTC unit;
 
@@ -180,15 +185,15 @@ void setup()
     // Create sprite for flicker-free drawing (2-bit palette, internal RAM)
     canvas.setPsram(false);
     canvas.setColorDepth(2);
-    int32_t sw = lcd.width() < 320 ? lcd.width() : 320;
-    int32_t sh = lcd.height() < 240 ? lcd.height() : 240;
-    canvas.createSprite(sw, sh);
-    canvas.setFont(lcd.getFont());
-    canvas.setTextSize(lcd.getTextSizeX(), lcd.getTextSizeY());
+    canvas.createSprite(CANVAS_WIDTH, CANVAS_HEIGHT);
     canvas.setPaletteColor(0, TFT_BLACK);
     canvas.setPaletteColor(1, TFT_WHITE);
     canvas.setPaletteColor(2, TFT_BLUE);
     canvas.setPaletteColor(3, TFT_DARKGREY);
+    // Zoom the canvas by an integer factor to fit the display
+    canvas_zoom =
+        static_cast<float>(std::max<int32_t>(1, std::min(lcd.width() / CANVAS_WIDTH, lcd.height() / CANVAS_HEIGHT)));
+    lcd.fillScreen(TFT_BLACK);
 
     // Set alarm to +1 minute
     set_alarm_plus1();
@@ -231,7 +236,7 @@ void loop()
                       local.tm_sec, cached_alarm_h, cached_alarm_m);
         draw_indicator(indicator_lit);
         indicator_lit = false;
-        canvas.pushSprite(0, 0);
+        canvas.pushRotateZoom(&lcd, lcd.width() / 2, lcd.height() / 2, 0.0f, canvas_zoom, canvas_zoom);
         prev = now;
     }
 

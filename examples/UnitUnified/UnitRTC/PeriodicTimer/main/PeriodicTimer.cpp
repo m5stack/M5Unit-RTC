@@ -5,16 +5,16 @@
  */
 /*
   Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
-  - Countdown timer using writeTimer() convenience API
-    The timer repeats in hardware; the one-shot modes stop it with writeTimer(0) when it fires
-  - BtnA click: cycle interval and repeat mode
-    5s repeat -> 10s repeat -> 30s repeat -> 5s oneshot -> 10s oneshot -> stop -> ...
+  - Periodic countdown timer using writeTimer() convenience API (it repeats until writeTimer(0) stops it)
+  - BtnA click: cycle the interval
+    5s -> 10s -> 30s -> stop -> ...
 */
 #include <M5Unified.h>
 #include <M5UnitUnified.h>
 #include <M5UnitUnifiedRTC.h>
 #include <wiring/m5_unit_unified_wiring.hpp>
 #include <sys/time.h>
+#include <algorithm>
 #include <cstdint>
 
 namespace {
@@ -33,6 +33,10 @@ constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 
 auto& lcd = M5.Display;
 LGFX_Sprite canvas(&lcd);
+// The canvas holds 20 columns x 8 rows of the 6x8 font and is zoomed to fit the display
+constexpr int32_t CANVAS_WIDTH{20 * 6};
+constexpr int32_t CANVAS_HEIGHT{8 * 8};
+float canvas_zoom{1.0f};
 m5::unit::UnitUnified Units;
 m5::unit::UnitRTC unit;
 
@@ -40,15 +44,9 @@ volatile uint32_t timer_count{};
 volatile bool timer_fired{};
 bool indicator_lit{};
 
-// Mode table: {seconds, repeat}
-struct TimerMode {
-    uint8_t seconds;
-    bool repeat;
-};
-constexpr TimerMode MODES[] = {
-    {5, true}, {10, true}, {30, true}, {5, false}, {10, false}, {0, false},
-};
-size_t mode_idx{};
+// Timer intervals in seconds (0: stop)
+constexpr uint8_t INTERVALS[] = {5, 10, 30, 0};
+size_t interval_idx{};
 
 void on_timer()
 {
@@ -77,19 +75,19 @@ void draw_indicator(bool lit)
     canvas.fillCircle(x, y, r, lit ? 2 : 3);  // palette: 2=TFT_BLUE, 3=TFT_DARKGREY
 }
 
-// Start timer with current mode
+// Start the timer with the current interval
 void start_timer()
 {
-    auto& m = MODES[mode_idx];
+    const uint8_t seconds{INTERVALS[interval_idx]};
 
-    if (m.seconds == 0) {
+    if (seconds == 0) {
         unit.writeTimer(0);
         M5.Log.printf("Timer stopped\n");
         return;
     }
 
-    uint32_t actual = unit.writeTimer(static_cast<uint32_t>(m.seconds) * 1000);
-    M5.Log.printf("Timer: %lu ms, %s\n", (unsigned long)actual, m.repeat ? "repeat" : "oneshot");
+    const uint32_t actual{unit.writeTimer(static_cast<uint32_t>(seconds) * 1000)};
+    M5.Log.printf("Timer: %lu ms\n", (unsigned long)actual);
 }
 
 }  // namespace
@@ -144,15 +142,15 @@ void setup()
     // Create sprite for flicker-free drawing (2-bit palette, internal RAM)
     canvas.setPsram(false);
     canvas.setColorDepth(2);
-    int32_t sw = lcd.width() < 320 ? lcd.width() : 320;
-    int32_t sh = lcd.height() < 240 ? lcd.height() : 240;
-    canvas.createSprite(sw, sh);
-    canvas.setFont(lcd.getFont());
-    canvas.setTextSize(lcd.getTextSizeX(), lcd.getTextSizeY());
+    canvas.createSprite(CANVAS_WIDTH, CANVAS_HEIGHT);
     canvas.setPaletteColor(0, TFT_BLACK);
     canvas.setPaletteColor(1, TFT_WHITE);
     canvas.setPaletteColor(2, TFT_BLUE);
     canvas.setPaletteColor(3, TFT_DARKGREY);
+    // Zoom the canvas by an integer factor to fit the display
+    canvas_zoom =
+        static_cast<float>(std::max<int32_t>(1, std::min(lcd.width() / CANVAS_WIDTH, lcd.height() / CANVAS_HEIGHT)));
+    lcd.fillScreen(TFT_BLACK);
 
     // Start with first mode
     start_timer();
@@ -172,17 +170,13 @@ void loop()
         indicator_lit = true;
         M5.Log.printf("Timer fired! count=%lu\n", (unsigned long)timer_count);
         M5.Speaker.tone(2000, 20);
-        // The PCF8563 has no one-shot timer; stop it here for the one-shot modes
-        if (!MODES[mode_idx].repeat) {
-            unit.writeTimer(0);
-        }
         prev = 0;  // force redraw
     }
 
-    // BtnA click: cycle mode
+    // BtnA click: cycle the interval
     if (M5.BtnA.wasClicked()) {
-        mode_idx    = (mode_idx + 1) % m5::stl::size(MODES);
-        timer_count = 0;
+        interval_idx = (interval_idx + 1) % m5::stl::size(INTERVALS);
+        timer_count  = 0;
         start_timer();
         prev = 0;  // force redraw
     }
@@ -191,28 +185,27 @@ void loop()
     if (now != prev) {
         struct tm local = *localtime(&now);
 
-        auto& m        = MODES[mode_idx];
-        uint32_t count = timer_count;
+        const uint8_t seconds{INTERVALS[interval_idx]};
+        const uint32_t count{timer_count};
 
         // Serial
-        M5.Log.printf("%04d-%02d-%02d(%s) %02d:%02d:%02d  Timer:%us %s Count:%lu\n", local.tm_year + 1900,
+        M5.Log.printf("%04d-%02d-%02d(%s) %02d:%02d:%02d  Timer:%us Count:%lu\n", local.tm_year + 1900,
                       local.tm_mon + 1, local.tm_mday, WDAY_NAMES[local.tm_wday], local.tm_hour, local.tm_min,
-                      local.tm_sec, m.seconds, m.repeat ? "repeat" : "oneshot", (unsigned long)count);
+                      local.tm_sec, seconds, (unsigned long)count);
 
         // Draw to canvas (off-screen), then push to display
         canvas.fillScreen(TFT_BLACK);
         canvas.setCursor(0, 0);
         canvas_printf("%04d-%02d-%02d(%s)\n%02d:%02d:%02d\n\n", local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
                       WDAY_NAMES[local.tm_wday], local.tm_hour, local.tm_min, local.tm_sec);
-        if (m.seconds == 0) {
+        if (seconds == 0) {
             canvas_printf("Timer: OFF\nCount: %lu\n\n[BtnA] Start\n", (unsigned long)count);
         } else {
-            canvas_printf("Timer: %u sec\nMode:  %s\nCount: %lu\n\n[BtnA] Change\n", m.seconds,
-                          m.repeat ? "repeat" : "oneshot", (unsigned long)count);
+            canvas_printf("Timer: %u sec\nCount: %lu\n\n[BtnA] Change\n", seconds, (unsigned long)count);
         }
         draw_indicator(indicator_lit);
         indicator_lit = false;
-        canvas.pushSprite(0, 0);
+        canvas.pushRotateZoom(&lcd, lcd.width() / 2, lcd.height() / 2, 0.0f, canvas_zoom, canvas_zoom);
         prev = now;
     }
 }
