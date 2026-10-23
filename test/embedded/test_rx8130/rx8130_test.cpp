@@ -1000,16 +1000,18 @@ TEST_F(TestRX8130, BeginAppliesConfig)
     const auto org = unit->config();
     auto cfg       = org;
     cfg.fout       = ClockOutput::Hz1;
-    cfg.charge     = false;
+    // Not the default (false). Safe on Tab5 (supercapacitor through 1 kOhm);
+    // never run this with true on a board with a primary cell on VBAT (e.g. ToughC5)
+    cfg.charge = true;
     unit->config(cfg);
     EXPECT_TRUE(unit->begin());
 
     ClockOutput fout{};
-    bool chg{true}, sw{};
+    bool chg{}, sw{};
     EXPECT_TRUE(unit->readClockOutput(fout));
     EXPECT_EQ(fout, ClockOutput::Hz1);
     EXPECT_TRUE(unit->readBatteryCharge(chg));
-    EXPECT_FALSE(chg);
+    EXPECT_TRUE(chg);
     EXPECT_TRUE(unit->readPowerSwitch(sw));
     EXPECT_TRUE(sw);
 
@@ -1018,6 +1020,7 @@ TEST_F(TestRX8130, BeginAppliesConfig)
     EXPECT_TRUE(unit->begin());
     EXPECT_TRUE(unit->readClockOutput(fout));
     EXPECT_EQ(fout, org.fout);
+    chg = !org.charge;
     EXPECT_TRUE(unit->readBatteryCharge(chg));
     EXPECT_EQ(chg, org.charge);
 }

@@ -1149,23 +1149,46 @@ TEST_F(TestPCF8563, BeginKeepsFlags)
 {
     SCOPED_TRACE(ustr);
 
+    // Let both the alarm (AF) and the timer (TF) fire
+    EXPECT_TRUE(unit->writeDateTime(rtc_datetime_t(rtc_date_t(2026, 10, 22, 4), rtc_time_t(12, 0, 58))));
+    EXPECT_TRUE(unit->writeAlarm(rtc_time_t(12, 1, -1), rtc_date_t(2000, 1, -1, -1)));
     EXPECT_EQ(unit->writeTimer(1000), 1000U);
-    bool tf{};
+    bool af{}, tf{};
     const auto start_at = m5::utility::millis();
     do {
         m5::utility::delay(10);
+        EXPECT_TRUE(unit->readAlarmFlag(af));
         EXPECT_TRUE(unit->readTimerFlag(tf));
-    } while (!tf && !m5::utility::hasElapsed(start_at, 2500));
+    } while (!(af && tf) && !m5::utility::hasElapsed(start_at, 3500));
+    EXPECT_TRUE(af);
     EXPECT_TRUE(tf);
 
+    // Enable the interrupts and TI_TP so that begin() has to clear them
+    // (the INT pin of Unit RTC is not connected)
+    EXPECT_TRUE(unit->writeAlarmInterrupt(true));
+    EXPECT_TRUE(unit->writeTimerInterrupt(true));
+    EXPECT_TRUE(unit->writeTimerInterruptPulse(true));
+
     EXPECT_TRUE(unit->begin());
+
+    // The flags are kept
+    af = tf = false;
+    EXPECT_TRUE(unit->readAlarmFlag(af));
+    EXPECT_TRUE(af);
     EXPECT_TRUE(unit->readTimerFlag(tf));
-    EXPECT_TRUE(tf);  // kept
-    bool ie{true}, enabled{true};
+    EXPECT_TRUE(tf);
+    // The interrupts, TI_TP and the timer are disabled
+    bool aie{true}, tie{true}, pulse{true}, enabled{true};
     TimerClock clk{};
-    EXPECT_TRUE(unit->readTimerInterrupt(ie));
-    EXPECT_FALSE(ie);
+    EXPECT_TRUE(unit->readAlarmInterrupt(aie));
+    EXPECT_FALSE(aie);
+    EXPECT_TRUE(unit->readTimerInterrupt(tie));
+    EXPECT_FALSE(tie);
+    EXPECT_TRUE(unit->readTimerInterruptPulse(pulse));
+    EXPECT_FALSE(pulse);
     EXPECT_TRUE(unit->readTimerControl(enabled, clk));
     EXPECT_FALSE(enabled);
+
+    EXPECT_TRUE(unit->clearAlarmFlag());
     EXPECT_TRUE(unit->clearTimerFlag());
 }
