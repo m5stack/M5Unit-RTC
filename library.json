@@ -1,7 +1,7 @@
 {
     "name": "M5Unit-RTC",
-    "description": "Library for M5Stack UNIT RTC Using M5UnitUnified",
-    "keywords": "M5Stack UNIT RTC, M5UnitUnified",
+    "description": "Library for M5Stack UNIT RTC using M5UnitUnified",
+    "keywords": "m5stack,m5unitunified,rtc,pcf8563,bm8563,hym8563,rx8130,i2c",
     "authors": {
         "name": "M5Stack",
         "url": "https://www.m5stack.com"
