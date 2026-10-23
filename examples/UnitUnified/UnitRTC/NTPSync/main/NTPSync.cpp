@@ -285,6 +285,12 @@ void setup()
         M5_LOGE("The board is not Tab5");
         m5::unit::wiring::failStop();
     }
+    // Tab5 keeps the RTC with a supercapacitor (BT1), so let the RX8130CE charge it
+    {
+        auto cfg   = unit.config();
+        cfg.charge = true;
+        unit.config(cfg);
+    }
     bool unit_ready = Units.add(unit, M5.In_I2C) && Units.begin();
 #else
     // Board-aware connection: NessoN1 -> SoftwareI2C on the GROVE port, NanoC6/NanoH2 -> M5.Ex_I2C, others -> Wire

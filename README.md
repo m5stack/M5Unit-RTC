@@ -14,6 +14,9 @@ It uses the I2C communication interface (address 0x51). This library also suppor
 
 The Epson RX8130CE real-time clock built into M5Stack boards such as Tab5 (UnitRX8130, on the internal I2C bus, address 0x32).
 
+Charging of the backup battery (`config_t::charge`) is off by default. Turn it on only when a rechargeable battery or a
+supercapacitor is on VBAT (e.g. Tab5, StampPLC). Never turn it on with a primary cell (e.g. the CR2032 of ToughC5).
+
 ## Related Link
 
 - [Unit RTC & Datasheet](https://docs.m5stack.com/en/products/sku/U126)

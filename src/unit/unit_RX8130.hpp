@@ -50,9 +50,15 @@ public:
         bool power_switch{true};
         /*!
           Enable charging of the backup battery from VDD (CHGEN)
-          @warning Set false on boards with a non-rechargeable backup battery
+          @warning Enable it only when a rechargeable battery or a supercapacitor is on VBAT.
+          Charging a primary cell can make it leak or burst
+          @note Built-in RX8130CE of M5Stack boards (from the published schematics):
+          - Tab5, StampPLC: supercapacitor / rechargeable cell through 1 kOhm, set true to keep the backup charged
+          - ToughC5: CR2032 primary cell directly on VBAT, keep false
+          - StopWatch, PaperColor, PaperMono: no backup cell, no effect
+          @note The default is false (the power-on state of the chip)
          */
-        bool charge{true};
+        bool charge{false};
         //! Polling interval in milliseconds for IRQ status check in update()
         uint32_t polling_interval{500};
         //! Callback invoked from update() when alarm fires (nullptr: disabled)

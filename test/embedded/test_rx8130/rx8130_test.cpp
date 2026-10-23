@@ -715,12 +715,12 @@ TEST_F(TestRX8130, Backup)
 {
     SCOPED_TRACE(ustr);
 
-    // begin() applies the config (default: switchover and charging on)
-    bool sw{}, chg{};
+    // begin() applies the config (default: switchover on, charging off)
+    bool sw{}, chg{true};
     EXPECT_TRUE(unit->readPowerSwitch(sw));
     EXPECT_TRUE(sw);
     EXPECT_TRUE(unit->readBatteryCharge(chg));
-    EXPECT_TRUE(chg);
+    EXPECT_FALSE(chg);
 
     // Round-trips; restore the original values at the end
     FullChargeVoltage org_fv{};
@@ -762,8 +762,9 @@ TEST_F(TestRX8130, Backup)
     // Other bits of CONTROL1 are kept
     EXPECT_TRUE(unit->readPowerSwitch(sw));
     EXPECT_TRUE(sw);
+    chg = true;
     EXPECT_TRUE(unit->readBatteryCharge(chg));
-    EXPECT_TRUE(chg);
+    EXPECT_FALSE(chg);
 
     EXPECT_TRUE(unit->writeFullChargeVoltage(org_fv));
     EXPECT_TRUE(unit->writeResetVoltage(org_rv));
