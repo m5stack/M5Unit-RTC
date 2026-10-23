@@ -65,8 +65,9 @@ public:
     /*!
       @brief Initialize the unit with config()
       @return True if successful
-      @note Clears CONTROL1, disables the interrupts (the flags are kept so that the wakeup source can be read),
-            sets CLKOUT and stops the timer.
+      @note Clears CONTROL1, disables the interrupts and sets TI_TP=0, sets CLKOUT and stops the timer.
+            The flags (AF/TF) are kept so that the wakeup source can be read. In the polling mode,
+            update() calls the callback of a flag that is still set, unless writeAlarm() / writeTimer() clears it first
             In the hardware interrupt mode it also sets up the GPIO and the ISR, and fails if they fail
      */
     virtual bool begin() override;

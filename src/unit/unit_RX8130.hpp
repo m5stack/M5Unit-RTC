@@ -56,7 +56,9 @@ public:
           - Tab5, StampPLC: supercapacitor / rechargeable cell through 1 kOhm, set true to keep the backup charged
           - ToughC5: CR2032 primary cell directly on VBAT, keep false
           - StopWatch, PaperColor, PaperMono: no backup cell, no effect
-          @note The default is false (the power-on state of the chip)
+          @note The default is false (the power-on state of the chip). begin() always writes CHGEN, so false also
+          stops charging enabled before (e.g. by M5Unified)
+          @note Charging works only with power_switch (INIEN) enabled
          */
         bool charge{false};
         //! Polling interval in milliseconds for IRQ status check in update()
