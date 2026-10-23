@@ -484,3 +484,16 @@ TEST(TimerClockTest, Values)
     EXPECT_EQ(static_cast<uint8_t>(TimerClock::Hz1), 2);
     EXPECT_EQ(static_cast<uint8_t>(TimerClock::HzPM), 3);
 }
+
+// ============================================================
+// ClockOutput (CLKOUT control register 0x0D: FE bit 7, FD bits 1-0)
+// ============================================================
+
+TEST(ClockOutputTest, Values)
+{
+    EXPECT_EQ(static_cast<uint8_t>(ClockOutput::None), 0x00);
+    EXPECT_EQ(static_cast<uint8_t>(ClockOutput::Hz32768), 0x80);
+    EXPECT_EQ(static_cast<uint8_t>(ClockOutput::Hz1024), 0x81);
+    EXPECT_EQ(static_cast<uint8_t>(ClockOutput::Hz32), 0x82);
+    EXPECT_EQ(static_cast<uint8_t>(ClockOutput::Hz1), 0x83);
+}
