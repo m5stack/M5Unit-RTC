@@ -37,18 +37,40 @@ The Epson RX8130CE real-time clock built into M5Stack boards such as Tab5 (UnitR
 ## Examples
 See also [examples/UnitUnified](examples/UnitUnified)
 
-- [UnitRTC/NTPSync](examples/UnitUnified/UnitRTC/NTPSync): Gets the time from NTP over Wi-Fi and sets the RTC
+- [UnitRTC/NTPSync](examples/UnitUnified/UnitRTC/NTPSync): Gets the time from NTP over Wi-Fi and sets the RTC.
+  It can also use the built-in RX8130CE of Tab5 (see below)
 - [UnitRTC/AlarmNotify](examples/UnitUnified/UnitRTC/AlarmNotify): Sets an alarm one minute ahead and notifies when it fires
 - [UnitRTC/PeriodicTimer](examples/UnitUnified/UnitRTC/PeriodicTimer): Fires the countdown timer periodically
 - [UnitRTC/ViaPaHub](examples/UnitUnified/UnitRTC/ViaPaHub): Reads the date and time through PaHub (ch:0).
   Requires [M5Unit-HUB](https://github.com/m5stack/M5Unit-HUB).
+
+### For ArduinoIDE settings
+
+NTPSync works with Unit RTC by default. To use the built-in RX8130CE of Tab5, choose the define symbol in the source.
+
+```cpp
+// *************************************************************
+// Choose one define symbol to match the RTC you are using
+// *************************************************************
+#if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
+// For Unit RTC (U126)
+#define USING_UNIT_RTC
+// For the built-in RX8130CE of Tab5 (internal I2C)
+// #define BUILTIN_UNIT_RX8130
+#endif
+```
+
+AlarmNotify / PeriodicTimer are for Unit RTC only: on Tab5 the interrupt output of the RX8130CE is wired to the power
+controller, so these examples, which enable the alarm / timer interrupt, must not be used with the built-in RTC.
 
 ### For ESP-IDF settings
 
 > **NOTE:** The ESP-IDF native build (`idf.py`) targets ESP-IDF **5.1 or later** (5.x and 6.x).
 > The legacy library (`Unit_RTC.h`) is for Arduino only and is not built under ESP-IDF.
 
-The examples need no Kconfig choice. Build them directly:
+On ESP-IDF native builds (`idf.py`), the RTC of NTPSync is selected via Kconfig instead of editing the source `#define`:
+`idf.py menuconfig` → **M5Unit-RTC NTPSync example** → **Target RTC**. The **M5Tab5 built-in RX8130CE** option appears
+only when the target is esp32p4. The other examples need no Kconfig choice. Build them directly:
 
 ```sh
 cd examples/UnitUnified/UnitRTC/PeriodicTimer

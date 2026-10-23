@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 /*
-  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
+  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563) or the built-in RX8130CE of Tab5
   - Sync time from NTP via Wi-Fi, then set RTC
   Wi-Fi uses esp_wifi directly (wifi_connect.hpp), so the same code builds with Arduino and ESP-IDF.
   ESP32-H2 (NanoH2) has no Wi-Fi and is not supported by this example.
@@ -14,6 +14,16 @@
 #include <M5UnitUnifiedRTC.h>
 #include <wiring/m5_unit_unified_wiring.hpp>
 #include "wifi_connect.hpp"
+
+// *************************************************************
+// Choose one define symbol to match the RTC you are using
+// *************************************************************
+#if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
+// For Unit RTC (U126)
+#define USING_UNIT_RTC
+// For the built-in RX8130CE of Tab5 (internal I2C)
+// #define BUILTIN_UNIT_RX8130
+#endif
 #include <esp_idf_version.h>
 #include <esp_random.h>
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
@@ -86,7 +96,18 @@ constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 
 auto& lcd = M5.Display;
 m5::unit::UnitUnified Units;
+#if defined(USING_UNIT_RTC)
+#pragma message("Using Unit RTC")
 m5::unit::UnitRTC unit;
+#elif defined(BUILTIN_UNIT_RX8130)
+#pragma message("Using the built-in RX8130 (Tab5)")
+#if !defined(CONFIG_IDF_TARGET_ESP32P4)
+#error "BUILTIN_UNIT_RX8130 is for Tab5 (ESP32-P4)"
+#endif
+m5::unit::UnitRX8130 unit;
+#else
+#error "Choose the RTC"
+#endif
 
 void display_printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void display_printf(const char* fmt, ...)
@@ -207,8 +228,17 @@ void setup()
         lcd.setRotation(1);
     }
 
+#if defined(BUILTIN_UNIT_RX8130)
+    // The built-in RX8130CE is on the internal I2C bus
+    if (M5.getBoard() != m5::board_t::board_M5Tab5) {
+        M5_LOGE("The board is not Tab5");
+        m5::unit::wiring::failStop();
+    }
+    bool unit_ready = Units.add(unit, M5.In_I2C) && Units.begin();
+#else
     // Board-aware connection: NessoN1 -> SoftwareI2C on the GROVE port, NanoC6/NanoH2 -> M5.Ex_I2C, others -> Wire
     bool unit_ready = m5::unit::wiring::addI2C(Units, unit) && Units.begin();
+#endif
     if (!unit_ready) {
         M5_LOGE("Failed to begin");
         m5::unit::wiring::failStop();
@@ -216,8 +246,9 @@ void setup()
     M5_LOGI("M5UnitUnified initialized");
     M5_LOGI("%s", Units.debugInfo().c_str());
 
-    // Check voltage low (battery backup lost)
-    if (unit.getVoltLow()) {
+    // Check whether the time data were lost (backup voltage low / oscillation stop)
+    bool volt_low{};
+    if (unit.readVoltLow(volt_low) && volt_low) {
         M5_LOGW("RTC voltage low - time may be invalid");
     }
 

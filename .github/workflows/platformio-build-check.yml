@@ -100,6 +100,8 @@ jobs:
         include:
           - {unit: UnitRTC, example: AlarmNotify, board: Core, framework: Arduino, espressif32: latest}
           - {unit: UnitRTC, example: PeriodicTimer, board: Core, framework: Arduino, espressif32: latest}
+          # NTPSync with the built-in RX8130CE of Tab5 (-DBUILTIN_UNIT_RX8130 in the env)
+          - {unit: BuiltinRX8130, example: NTPSync, board: Tab5, framework: Arduino, espressif32: latest}
 
     steps:
       - name: Checkout
