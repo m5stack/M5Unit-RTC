@@ -105,7 +105,7 @@ jobs:
 #          - m5stack_unit_cams3
 
         platform-version:
-          - 3.3.9
+          - 3.3.10
 
         platform:
           - m5stack
@@ -128,14 +128,14 @@ jobs:
             platform-url: https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
             platform: m5stack
             archi: esp32
-            platform-version: 3.3.9
+            platform-version: 3.3.10
             board: m5stack_core
           - unit: UnitRTC
             sketch: PeriodicTimer
             platform-url: https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
             platform: m5stack
             archi: esp32
-            platform-version: 3.3.9
+            platform-version: 3.3.10
             board: m5stack_core
           # NTPSync with the built-in RX8130CE of Tab5
           - unit: UnitRTC
@@ -143,7 +143,7 @@ jobs:
             platform-url: https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
             platform: m5stack
             archi: esp32
-            platform-version: 3.3.9
+            platform-version: 3.3.10
             board: m5stack_tab5
             build-properties: "-DBUILTIN_UNIT_RX8130"
 
