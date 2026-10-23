@@ -22,14 +22,50 @@ class TestPCF8563 : public I2CComponentTestBase<UnitPCF8563> {
 protected:
     virtual UnitPCF8563* get_instance() override
     {
-        auto ptr = new m5::unit::UnitPCF8563();
-        if (ptr) {
-            auto ccfg = ptr->component_config();
-            ptr->component_config(ccfg);
-        }
-        return ptr;
+        return new m5::unit::UnitPCF8563();
     }
+
+    // Keep the unit clock: save the date/time and restore it (plus the elapsed time) after each test.
+    // Interrupts and STOP are reset before and after each test, so that a failed test does not affect the next
+    virtual void SetUp() override
+    {
+        I2CComponentTestBase<UnitPCF8563>::SetUp();
+        if (unit) {
+            unit->disableIRQ();
+            unit->writeStop(false);
+            struct tm t {
+            };
+            _saved    = unit->readDateTime(t);
+            _saved_at = mktime(&t);
+            _saved_ms = m5::utility::millis();
+        }
+    }
+    virtual void TearDown() override
+    {
+        if (unit) {
+            unit->disableIRQ();
+            unit->writeStop(false);
+            if (_saved) {
+                time_t now  = _saved_at + (m5::utility::millis() - _saved_ms + 500) / 1000;
+                struct tm t = *localtime(&now);
+                unit->writeDateTime(t);
+            }
+        }
+        I2CComponentTestBase<UnitPCF8563>::TearDown();
+    }
+
+    bool _saved{};
+    time_t _saved_at{};
+    uint32_t _saved_ms{};
 };
+
+namespace {
+// A second may pass between the write and the read
+void expect_seconds(const int actual, const int written)
+{
+    EXPECT_TRUE(actual == written || actual == written + 1) << "seconds " << actual << " written " << written;
+}
+}  // namespace
 
 // ============================================================
 // DateTime
@@ -42,9 +78,7 @@ TEST_F(TestPCF8563, DateTime)
     // --- Time round-trip ---
     {
         rtc_time_t write_vals[] = {
-            {0, 0, 0},
-            {12, 30, 45},
-            {23, 59, 59},
+            {0, 0, 0}, {12, 30, 45}, {23, 59, 58},  // a second later stays on the same day
         };
         for (auto& wt : write_vals) {
             auto s = m5::utility::formatString("Time %d:%d:%d", wt.hours, wt.minutes, wt.seconds);
@@ -55,89 +89,89 @@ TEST_F(TestPCF8563, DateTime)
             EXPECT_TRUE(unit->readTime(rt));
             EXPECT_EQ(rt.hours, wt.hours);
             EXPECT_EQ(rt.minutes, wt.minutes);
-            EXPECT_EQ(rt.seconds, wt.seconds);
+            expect_seconds(rt.seconds, wt.seconds);
         }
     }
 
     // --- Date round-trip ---
-    {// 2000 or later
-     {SCOPED_TRACE("Date 2026-02-26");
-    rtc_date_t wd(2026, 2, 26, 4);
-    EXPECT_TRUE(unit->writeDate(wd));
+    // 2000 or later
+    {
+        SCOPED_TRACE("Date 2026-02-26");
+        rtc_date_t wd(2026, 2, 26, 4);
+        EXPECT_TRUE(unit->writeDate(wd));
 
-    rtc_date_t rd{};
-    EXPECT_TRUE(unit->readDate(rd));
-    EXPECT_EQ(rd.year, 2026);
-    EXPECT_EQ(rd.month, 2);
-    EXPECT_EQ(rd.date, 26);
-    EXPECT_EQ(rd.weekDay, 4);
-}
-// 1900s (century bit)
-{
-    SCOPED_TRACE("Date 1999-12-31");
-    rtc_date_t wd(1999, 12, 31, 5);
-    EXPECT_TRUE(unit->writeDate(wd));
+        rtc_date_t rd{};
+        EXPECT_TRUE(unit->readDate(rd));
+        EXPECT_EQ(rd.year, 2026);
+        EXPECT_EQ(rd.month, 2);
+        EXPECT_EQ(rd.date, 26);
+        EXPECT_EQ(rd.weekDay, 4);
+    }
+    // 1900s (century bit)
+    {
+        SCOPED_TRACE("Date 1999-12-31");
+        rtc_date_t wd(1999, 12, 31, 5);
+        EXPECT_TRUE(unit->writeDate(wd));
 
-    rtc_date_t rd{};
-    EXPECT_TRUE(unit->readDate(rd));
-    EXPECT_EQ(rd.year, 1999);
-    EXPECT_EQ(rd.month, 12);
-    EXPECT_EQ(rd.date, 31);
-}
-// Boundary: 2000-01-01
-{
-    SCOPED_TRACE("Date 2000-01-01");
-    rtc_date_t wd(2000, 1, 1, 6);
-    EXPECT_TRUE(unit->writeDate(wd));
+        rtc_date_t rd{};
+        EXPECT_TRUE(unit->readDate(rd));
+        EXPECT_EQ(rd.year, 1999);
+        EXPECT_EQ(rd.month, 12);
+        EXPECT_EQ(rd.date, 31);
+    }
+    // Boundary: 2000-01-01
+    {
+        SCOPED_TRACE("Date 2000-01-01");
+        rtc_date_t wd(2000, 1, 1, 6);
+        EXPECT_TRUE(unit->writeDate(wd));
 
-    rtc_date_t rd{};
-    EXPECT_TRUE(unit->readDate(rd));
-    EXPECT_EQ(rd.year, 2000);
-    EXPECT_EQ(rd.month, 1);
-    EXPECT_EQ(rd.date, 1);
-}
-}
+        rtc_date_t rd{};
+        EXPECT_TRUE(unit->readDate(rd));
+        EXPECT_EQ(rd.year, 2000);
+        EXPECT_EQ(rd.month, 1);
+        EXPECT_EQ(rd.date, 1);
+    }
 
-// --- DateTime round-trip (rtc_datetime_t) ---
-{
-    SCOPED_TRACE("DateTime rtc_datetime_t");
-    rtc_datetime_t wdt(rtc_date_t(2026, 6, 15, 1), rtc_time_t(8, 30, 0));
-    EXPECT_TRUE(unit->writeDateTime(wdt));
+    // --- DateTime round-trip (rtc_datetime_t) ---
+    {
+        SCOPED_TRACE("DateTime rtc_datetime_t");
+        rtc_datetime_t wdt(rtc_date_t(2026, 6, 15, 1), rtc_time_t(8, 30, 0));
+        EXPECT_TRUE(unit->writeDateTime(wdt));
 
-    rtc_datetime_t rdt{};
-    EXPECT_TRUE(unit->readDateTime(rdt));
-    EXPECT_EQ(rdt.date.year, 2026);
-    EXPECT_EQ(rdt.date.month, 6);
-    EXPECT_EQ(rdt.date.date, 15);
-    EXPECT_EQ(rdt.time.hours, 8);
-    EXPECT_EQ(rdt.time.minutes, 30);
-    EXPECT_EQ(rdt.time.seconds, 0);
-}
+        rtc_datetime_t rdt{};
+        EXPECT_TRUE(unit->readDateTime(rdt));
+        EXPECT_EQ(rdt.date.year, 2026);
+        EXPECT_EQ(rdt.date.month, 6);
+        EXPECT_EQ(rdt.date.date, 15);
+        EXPECT_EQ(rdt.time.hours, 8);
+        EXPECT_EQ(rdt.time.minutes, 30);
+        expect_seconds(rdt.time.seconds, 0);
+    }
 
-// --- DateTime round-trip (struct tm) ---
-{
-    SCOPED_TRACE("DateTime struct tm");
-    struct tm wt {
-    };
-    wt.tm_year = 126;  // 2026
-    wt.tm_mon  = 1;    // February
-    wt.tm_mday = 26;
-    wt.tm_wday = 4;
-    wt.tm_hour = 14;
-    wt.tm_min  = 20;
-    wt.tm_sec  = 33;
-    EXPECT_TRUE(unit->writeDateTime(wt));
+    // --- DateTime round-trip (struct tm) ---
+    {
+        SCOPED_TRACE("DateTime struct tm");
+        struct tm wt {
+        };
+        wt.tm_year = 126;  // 2026
+        wt.tm_mon  = 1;    // February
+        wt.tm_mday = 26;
+        wt.tm_wday = 4;
+        wt.tm_hour = 14;
+        wt.tm_min  = 20;
+        wt.tm_sec  = 33;
+        EXPECT_TRUE(unit->writeDateTime(wt));
 
-    struct tm rt {
-    };
-    EXPECT_TRUE(unit->readDateTime(rt));
-    EXPECT_EQ(rt.tm_year, 126);
-    EXPECT_EQ(rt.tm_mon, 1);
-    EXPECT_EQ(rt.tm_mday, 26);
-    EXPECT_EQ(rt.tm_hour, 14);
-    EXPECT_EQ(rt.tm_min, 20);
-    EXPECT_EQ(rt.tm_sec, 33);
-}
+        struct tm rt {
+        };
+        EXPECT_TRUE(unit->readDateTime(rt));
+        EXPECT_EQ(rt.tm_year, 126);
+        EXPECT_EQ(rt.tm_mon, 1);
+        EXPECT_EQ(rt.tm_mday, 26);
+        EXPECT_EQ(rt.tm_hour, 14);
+        EXPECT_EQ(rt.tm_min, 20);
+        expect_seconds(rt.tm_sec, 33);
+    }
 }
 
 // ============================================================
@@ -337,10 +371,10 @@ TEST_F(TestPCF8563, ClockControl)
     // --- STOP preserves time registers ---
     {
         SCOPED_TRACE("Stop preserves time");
+        // Stop first, then write the time (the setting order recommended by the datasheet)
+        EXPECT_TRUE(unit->writeStop(true));
         pcf8563::rtc_time_t wt(12, 0, 0);
         EXPECT_TRUE(unit->writeTime(wt));
-
-        EXPECT_TRUE(unit->writeStop(true));
         m5::utility::delay(2000);  // wait 2 seconds while stopped
 
         pcf8563::rtc_time_t rt{};
@@ -388,7 +422,7 @@ TEST_F(TestPCF8563, CompatAPI)
         EXPECT_EQ(rdt.date.date, 26);
         EXPECT_EQ(rdt.time.hours, 14);
         EXPECT_EQ(rdt.time.minutes, 20);
-        EXPECT_EQ(rdt.time.seconds, 33);
+        expect_seconds(rdt.time.seconds, 33);
     }
 
     // --- setTime / getTime ---
@@ -400,7 +434,7 @@ TEST_F(TestPCF8563, CompatAPI)
         m5::rtc_time_t rt = unit->getTime();
         EXPECT_EQ(rt.hours, 8);
         EXPECT_EQ(rt.minutes, 15);
-        EXPECT_EQ(rt.seconds, 0);
+        expect_seconds(rt.seconds, 0);
     }
 
     // --- setDate / getDate ---
@@ -510,7 +544,7 @@ TEST_F(TestPCF8563, CompatCrossAPI)
         EXPECT_EQ(rdt.date.date, 15);
         EXPECT_EQ(rdt.time.hours, 10);
         EXPECT_EQ(rdt.time.minutes, 20);
-        EXPECT_EQ(rdt.time.seconds, 30);
+        expect_seconds(rdt.time.seconds, 30);
     }
 
     // --- Write via compat, read via M5UnitUnified (DateTime) ---
@@ -528,7 +562,7 @@ TEST_F(TestPCF8563, CompatCrossAPI)
         EXPECT_EQ(rdt.date.date, 31);
         EXPECT_EQ(rdt.time.hours, 23);
         EXPECT_EQ(rdt.time.minutes, 59);
-        EXPECT_EQ(rdt.time.seconds, 50);
+        expect_seconds(rdt.time.seconds, 50);
     }
 
     // --- Write via M5UnitUnified, read via compat (Time only) ---
@@ -540,7 +574,7 @@ TEST_F(TestPCF8563, CompatCrossAPI)
         m5::rtc_time_t rt = unit->getTime();
         EXPECT_EQ(rt.hours, 7);
         EXPECT_EQ(rt.minutes, 45);
-        EXPECT_EQ(rt.seconds, 12);
+        expect_seconds(rt.seconds, 12);
     }
 
     // --- Write via compat, read via M5UnitUnified (Time only) ---
@@ -553,7 +587,7 @@ TEST_F(TestPCF8563, CompatCrossAPI)
         EXPECT_TRUE(unit->readTime(rt));
         EXPECT_EQ(rt.hours, 18);
         EXPECT_EQ(rt.minutes, 30);
-        EXPECT_EQ(rt.seconds, 55);
+        expect_seconds(rt.seconds, 55);
     }
 
     // --- Write via M5UnitUnified, read via compat (Date only) ---
@@ -794,7 +828,7 @@ TEST_F(TestPCF8563, CompatNullptr)
         m5::rtc_time_t rt = unit->getTime();
         EXPECT_EQ(rt.hours, 8);
         EXPECT_EQ(rt.minutes, 30);
-        EXPECT_EQ(rt.seconds, 45);
+        expect_seconds(rt.seconds, 45);
 
         // Date should be unchanged (still 2025-06-15)
         m5::rtc_date_t rd = unit->getDate();
@@ -894,7 +928,7 @@ TEST_F(TestPCF8563, CompatSetSystemTime)
     struct timeval tv {
     };
     gettimeofday(&tv, nullptr);
-    struct tm* t = gmtime(&tv.tv_sec);
+    struct tm* t = localtime(&tv.tv_sec);  // setSystemTimeFromRtc() converts with mktime (local time)
 
     EXPECT_EQ(t->tm_year + 1900, 2026);
     EXPECT_EQ(t->tm_mon + 1, 3);
@@ -1071,4 +1105,38 @@ TEST_F(TestPCF8563, UpdateClearsHandledFlags)
     cfg.on_timer = nullptr;
     unit->config(cfg);
     EXPECT_TRUE(unit->begin());
+}
+
+// ============================================================
+// The clock runs, and the date and the century carry over
+// ============================================================
+
+TEST_F(TestPCF8563, Running)
+{
+    SCOPED_TRACE(ustr);
+
+    // --- Clock runs ---
+    {
+        SCOPED_TRACE("Running");
+        EXPECT_TRUE(unit->writeTime(rtc_time_t(12, 0, 0)));
+        m5::utility::delay(2100);
+        rtc_time_t rt{};
+        EXPECT_TRUE(unit->readTime(rt));
+        EXPECT_TRUE(rt.seconds == 2 || rt.seconds == 3) << "seconds " << (int)rt.seconds;
+    }
+
+    // --- Carry over to the next day, month, year and century (C bit toggles) ---
+    {
+        SCOPED_TRACE("Carry");
+        EXPECT_TRUE(unit->writeDateTime(rtc_datetime_t(rtc_date_t(1999, 12, 31, 5), rtc_time_t(23, 59, 59))));
+        m5::utility::delay(1100);
+        rtc_datetime_t rdt{};
+        EXPECT_TRUE(unit->readDateTime(rdt));
+        EXPECT_EQ(rdt.date.year, 2000);
+        EXPECT_EQ(rdt.date.month, 1);
+        EXPECT_EQ(rdt.date.date, 1);
+        EXPECT_EQ(rdt.date.weekDay, 6);
+        EXPECT_EQ(rdt.time.hours, 0);
+        EXPECT_EQ(rdt.time.minutes, 0);
+    }
 }
