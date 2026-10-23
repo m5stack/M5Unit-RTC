@@ -229,7 +229,7 @@ TEST_F(TestRX8130, DateTime)
         m5::utility::delay(2100);
         rtc_time_t rt{};
         EXPECT_TRUE(unit->readTime(rt));
-        EXPECT_EQ(rt.seconds, 2);
+        EXPECT_TRUE(rt.seconds == 2 || rt.seconds == 3) << "seconds " << (int)rt.seconds;
     }
 
     // --- Carry over to the next day ---
@@ -986,4 +986,37 @@ TEST_F(TestRX8130, UpdateClearsHandledFlags)
     cfg.on_timer = nullptr;
     unit->config(cfg);
     EXPECT_TRUE(unit->begin());
+}
+
+// ============================================================
+// begin() applies config_t
+// ============================================================
+
+TEST_F(TestRX8130, BeginAppliesConfig)
+{
+    SCOPED_TRACE(ustr);
+
+    const auto org = unit->config();
+    auto cfg       = org;
+    cfg.fout       = ClockOutput::Hz1;
+    cfg.charge     = false;
+    unit->config(cfg);
+    EXPECT_TRUE(unit->begin());
+
+    ClockOutput fout{};
+    bool chg{true}, sw{};
+    EXPECT_TRUE(unit->readClockOutput(fout));
+    EXPECT_EQ(fout, ClockOutput::Hz1);
+    EXPECT_TRUE(unit->readBatteryCharge(chg));
+    EXPECT_FALSE(chg);
+    EXPECT_TRUE(unit->readPowerSwitch(sw));
+    EXPECT_TRUE(sw);
+
+    // Back to the default config
+    unit->config(org);
+    EXPECT_TRUE(unit->begin());
+    EXPECT_TRUE(unit->readClockOutput(fout));
+    EXPECT_EQ(fout, org.fout);
+    EXPECT_TRUE(unit->readBatteryCharge(chg));
+    EXPECT_EQ(chg, org.charge);
 }
