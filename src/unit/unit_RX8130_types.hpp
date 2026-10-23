@@ -100,9 +100,11 @@ enum class DetectionTime : uint8_t {
 
 ///@name Digital offset
 ///@{
-constexpr float DIGITAL_OFFSET_STEP_PPM{3.05f};  //!< @brief Digital offset step (ppm)
-constexpr int8_t DIGITAL_OFFSET_MIN{-64};        //!< @brief Minimum step (-195.31 ppm)
-constexpr int8_t DIGITAL_OFFSET_MAX{63};         //!< @brief Maximum step (+192.26 ppm)
+//! @brief Digital offset step (ppm): one 32.768 kHz count corrected every 10 seconds (1 / 327680).
+//! The datasheet text rounds it to 3.05
+constexpr float DIGITAL_OFFSET_STEP_PPM{3.0517578f};
+constexpr int8_t DIGITAL_OFFSET_MIN{-64};  //!< @brief Minimum step (-195.31 ppm)
+constexpr int8_t DIGITAL_OFFSET_MAX{63};   //!< @brief Maximum step (+192.26 ppm)
 ///@}
 
 }  // namespace rx8130

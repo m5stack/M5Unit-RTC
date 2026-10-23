@@ -928,8 +928,8 @@ bool UnitRX8130::writeDigitalOffsetPPM(const float ppm)
     if (ppm == 0.0f) {
         return writeDigitalOffset(false, 0);
     }
-    // Round |ppm| / 3.05 to the nearest step. The text of the datasheet says "decimals are discarded",
-    // but all its examples are rounded: +192 -> 63, -158 -> L=76 (-52), +11.57 -> 4, -11.57 -> L=124 (-4)
+    // Round |ppm| / DIGITAL_OFFSET_STEP_PPM to the nearest step. The text of the datasheet says "decimals are
+    // discarded", but all its examples are rounded: +192 -> 63, -158 -> L=76 (-52), +11.57 -> 4, -11.57 -> L=124 (-4)
     const long x = std::lround((ppm < 0 ? -ppm : ppm) / DIGITAL_OFFSET_STEP_PPM);
     int steps    = static_cast<int>(ppm > 0 ? x : -x);
     steps        = std::max<int>(DIGITAL_OFFSET_MIN, std::min<int>(DIGITAL_OFFSET_MAX, steps));

@@ -405,14 +405,15 @@ public:
     /*!
       @brief Read digital offset
       @param[out] enabled True if digital offset is enabled (DTE bit)
-      @param[out] steps Offset in steps of 3.05 ppm (-64 to 63)
+      @param[out] steps Offset in steps of 3.05 ppm (exactly 3.0518, see DIGITAL_OFFSET_STEP_PPM) (-64 to 63)
       @return True if successful
      */
     bool readDigitalOffset(bool& enabled, int8_t& steps);
     /*!
       @brief Write digital offset
       @param enabled True to enable digital offset (DTE bit)
-      @param steps Offset in steps of 3.05 ppm (-64 to 63). Positive makes the clock faster
+      @param steps Offset in steps of 3.05 ppm (exactly 3.0518, see DIGITAL_OFFSET_STEP_PPM) (-64 to 63).
+             Positive makes the clock faster
       @return True if successful
      */
     bool writeDigitalOffset(const bool enabled, const int8_t steps);
@@ -420,7 +421,7 @@ public:
       @brief Write digital offset in ppm
       @param ppm Offset in ppm (-195.31 to +192.26). 0 disables the digital offset
       @return True if successful
-      @note The value is rounded to the nearest step of 3.05 ppm, as in the datasheet examples
+      @note The value is rounded to the nearest step (DIGITAL_OFFSET_STEP_PPM), as in the datasheet examples
      */
     bool writeDigitalOffsetPPM(const float ppm);
     ///@}
