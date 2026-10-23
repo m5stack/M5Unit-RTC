@@ -22,10 +22,10 @@
 
 namespace m5 {
 namespace unit {
-using UnitBM8563   = m5::unit::UnitPCF8563;
-using UnitHYM8563  = m5::unit::UnitPCF8563;
-using UnitRTC      = m5::unit::UnitPCF8563;  //!< @brief Alias for UnitRTC
-using UnitRX8130CE = m5::unit::UnitRX8130;
+using UnitBM8563   = m5::unit::UnitPCF8563;  //!< @brief Alias of UnitPCF8563 for the BM8563
+using UnitHYM8563  = m5::unit::UnitPCF8563;  //!< @brief Alias of UnitPCF8563 for the HYM8563
+using UnitRTC      = m5::unit::UnitPCF8563;  //!< @brief Alias of UnitPCF8563 for Unit RTC (SKU:U126)
+using UnitRX8130CE = m5::unit::UnitRX8130;   //!< @brief Alias of UnitRX8130 for the RX8130CE
 }  // namespace unit
 }  // namespace m5
 #endif
