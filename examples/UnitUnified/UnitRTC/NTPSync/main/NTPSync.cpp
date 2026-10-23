@@ -32,16 +32,38 @@
 #include <esp_sntp.h>
 #endif
 #include <sys/time.h>
-#include <algorithm>  // std::shuffle
+#include <algorithm>  // std::shuffle, std::min, std::max
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 
-namespace {
 // ==============================================================
 // NOTICE: Set your Wi-Fi credentials and timezone before building
 // ==============================================================
-const char* WIFI_SSID = "";  // Your Wi-Fi SSID (empty: use the config stored in NVS by an earlier connection)
-const char* WIFI_PASS = "";  // Your Wi-Fi password
+// Wi-Fi credentials: fill in the defines below or give them as build options
+// (e.g. -DEXAMPLE_SSID="\"YOUR_SSID\"" -DEXAMPLE_PASSWORD="\"PASSWORD\"").
+// An empty SSID uses the config stored in NVS by an earlier connection.
+// ESP-IDF: the settings come from menuconfig (main/Kconfig.projbuild)
+#if !defined(ARDUINO)
+#if !defined(EXAMPLE_SSID)
+#define EXAMPLE_SSID CONFIG_EXAMPLE_WIFI_SSID
+#endif
+#if !defined(EXAMPLE_PASSWORD)
+#define EXAMPLE_PASSWORD CONFIG_EXAMPLE_WIFI_PASSWORD
+#endif
+#endif
+
+#if !defined(EXAMPLE_SSID)
+#define EXAMPLE_SSID ""  // SSID
+#endif
+#if !defined(EXAMPLE_PASSWORD)
+#define EXAMPLE_PASSWORD ""  // SSID Password
+#endif
+
+namespace {
+const char* WIFI_SSID = EXAMPLE_SSID;
+const char* WIFI_PASS = EXAMPLE_PASSWORD;
 // POSIX timezone string (default: JST-9 = UTC+9, no DST)
 const char* YOUR_TIMEZONE = "JST-9";
 // const char* YOUR_TIMEZONE = "EST5EDT,M3.2.0,M11.1.0";  // US Eastern (UTC-5, DST)
@@ -118,6 +140,21 @@ void display_printf(const char* fmt, ...)
     va_end(args);
 }
 
+// Show the progress of the Wi-Fi connection and the NTP sync on both Serial and Display
+void progress_printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void progress_printf(const char* fmt, ...)
+{
+    char buf[64]{};
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    M5.Log.printf("%s", buf);
+    lcd.startWrite();
+    lcd.print(buf);
+    lcd.endWrite();
+}
+
 // Get the time from the NTP servers in ntpURLTable and set the system clock (needs Wi-Fi)
 bool sync_sntp()
 {
@@ -131,9 +168,17 @@ bool sync_sntp()
         M5_LOGE("esp_netif_sntp_init failed");
         return false;
     }
-    const bool synced = (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(SYNC_TIMEOUT_MS)) == ESP_OK);
+    // Wait in 1 second steps to show the progress
+    esp_err_t err{ESP_ERR_TIMEOUT};
+    for (uint32_t i = 0; i < SYNC_TIMEOUT_MS / 1000 && err == ESP_ERR_TIMEOUT; ++i) {
+        err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(1000));
+        if (err == ESP_ERR_TIMEOUT) {
+            progress_printf(".");
+        }
+    }
+    progress_printf("\n");
     esp_netif_sntp_deinit();
-    return synced;
+    return err == ESP_OK;
 #else
     // ESP-IDF 4.4 (Arduino-ESP32 2.x)
     sntp_setoperatingmode(SNTP_OPMODE_POLL);
@@ -142,10 +187,16 @@ bool sync_sntp()
     }
     sntp_init();
     const auto start_at = m5::utility::millis();
+    auto dot_at         = start_at;
     while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED &&
            !m5::utility::hasElapsed(start_at, SYNC_TIMEOUT_MS)) {
         m5::utility::delay(100);
+        if (m5::utility::hasElapsed(dot_at, 1000)) {
+            dot_at += 1000;
+            progress_printf(".");
+        }
     }
+    progress_printf("\n");
     const bool synced = (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
     sntp_stop();
     return synced;
@@ -155,36 +206,34 @@ bool sync_sntp()
 // Sync NTP time and set RTC (shows progress on Display)
 bool sync_ntp_to_rtc()
 {
-    M5_LOGI("Connecting to Wi-Fi: %s", WIFI_SSID);
-    display_printf("Wi-Fi connecting\n");
+    progress_printf("Wi-Fi: %s\n", WIFI_SSID[0] ? WIFI_SSID : "(stored config)");
+    auto start_at = m5::utility::millis();
     if (!wifi_connect::connect(WIFI_SSID, WIFI_PASS)) {
-        M5_LOGE("Wi-Fi connection failed");
-        display_printf("Wi-Fi FAILED\n");
+        progress_printf("Wi-Fi: FAILED\n");
         wifi_connect::disconnect();
         return false;
     }
-    M5_LOGI("Wi-Fi connected");
-    display_printf("Wi-Fi OK\n");
+    progress_printf("Wi-Fi: OK %lu ms\n", static_cast<unsigned long>(m5::utility::millis() - start_at));
 
     // Shuffle NTP servers
     std::shuffle(std::begin(ntpURLTable), std::end(ntpURLTable), ESP32RNG{});
-    M5_LOGI("NTP: %s / %s / %s", ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
-    display_printf("NTP syncing\n");
+    M5_LOGI("NTP servers: %s / %s / %s", ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
+    progress_printf("NTP: syncing");
+    start_at          = m5::utility::millis();
     const bool synced = sync_sntp();
 
     // Done with Wi-Fi
     wifi_connect::disconnect();
 
     if (!synced) {
-        M5_LOGE("Failed to get NTP time");
-        display_printf("NTP FAILED\n");
+        progress_printf("NTP: FAILED\n");
         return false;
     }
+    progress_printf("NTP: OK %lu ms\n", static_cast<unsigned long>(m5::utility::millis() - start_at));
     time_t now_local = time(nullptr);
     struct tm t      = *localtime(&now_local);
-    M5_LOGI("NTP time: %04d-%02d-%02d %02d:%02d:%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
-            t.tm_sec);
-    display_printf("NTP OK\n");
+    progress_printf("%04d-%02d-%02d %02d:%02d:%02d\n", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
+                    t.tm_sec);
 
     // Set RTC from NTP (use GMT for RTC storage)
     // Stop RTC clock for precise time setting (prescaler held in reset)
@@ -197,8 +246,7 @@ bool sync_ntp_to_rtc()
     // Write time while clock is stopped (no carry race condition)
     if (!unit.writeDateTime(gmt)) {
         unit.writeStop(false);
-        M5_LOGE("Failed to set RTC");
-        display_printf("RTC set FAILED\n");
+        progress_printf("RTC: set FAILED\n");
         return false;
     }
 
@@ -211,7 +259,7 @@ bool sync_ntp_to_rtc()
 
     M5_LOGI("RTC set to (GMT): %04d-%02d-%02d %02d:%02d:%02d", gmt.tm_year + 1900, gmt.tm_mon + 1, gmt.tm_mday,
             gmt.tm_hour, gmt.tm_min, gmt.tm_sec);
-    display_printf("RTC set OK\n");
+    progress_printf("RTC: set OK\n");
 
     return true;
 }
@@ -227,6 +275,9 @@ void setup()
     if (lcd.height() > lcd.width()) {
         lcd.setRotation(1);
     }
+    // 6x8 font scaled so that 20 columns x 8 rows fit the display; the background is filled when overwriting
+    lcd.setTextSize(std::max<int32_t>(1, std::min(lcd.width() / (20 * 6), lcd.height() / (8 * 8))));
+    lcd.setTextColor(TFT_WHITE, TFT_BLACK);
 
 #if defined(BUILTIN_UNIT_RX8130)
     // The built-in RX8130CE is on the internal I2C bus
@@ -256,10 +307,11 @@ void setup()
     setenv("TZ", YOUR_TIMEZONE, 1);
     tzset();
 
-    // Sync from NTP (Wi-Fi credentials in WIFI_SSID / WIFI_PASS, or the config stored in NVS)
+    // Sync from NTP (Wi-Fi credentials in EXAMPLE_SSID / EXAMPLE_PASSWORD, or the config stored in NVS)
     if (!sync_ntp_to_rtc()) {
         M5_LOGW("NTP sync skipped or failed - using current RTC time");
     }
+    m5::utility::delay(2000);  // Keep the progress on the display for a while
     lcd.startWrite();
     lcd.fillScreen(0);
     lcd.endWrite();
@@ -293,6 +345,7 @@ void loop()
     if (M5.BtnA.wasClicked()) {
         // Read and show RTC (GMT)
         m5::unit::pcf8563::rtc_datetime_t dt{};
+        lcd.setCursor(0, lcd.fontHeight() * 3);  // Below the local time
         lcd.startWrite();
         if (unit.readDateTime(dt)) {
             const char* wday{(dt.date.weekDay >= 0 && dt.date.weekDay <= 6) ? WDAY_NAMES[dt.date.weekDay] : "---"};
@@ -306,7 +359,7 @@ void loop()
         }
         lcd.endWrite();
     } else if (M5.BtnA.wasHold()) {
-        // Re-sync RTC from NTP (progress shown on Display)
+        // Re-sync RTC from NTP (progress shown on Serial and Display)
         M5_LOGI("Re-syncing NTP...");
         lcd.startWrite();
         lcd.fillScreen(0);
@@ -316,6 +369,7 @@ void loop()
         if (!sync_ntp_to_rtc()) {
             M5_LOGW("NTP sync failed");
         }
+        m5::utility::delay(2000);  // Keep the progress on the display for a while
         lcd.startWrite();
         lcd.fillScreen(0);
         lcd.endWrite();

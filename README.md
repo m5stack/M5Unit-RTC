@@ -60,6 +60,16 @@ NTPSync works with Unit RTC by default. To use the built-in RX8130CE of Tab5, ch
 #endif
 ```
 
+NTPSync takes the Wi-Fi credentials from `EXAMPLE_SSID` / `EXAMPLE_PASSWORD`. Fill in the defines in the source or give
+them as build options. With an empty SSID, the config stored in NVS by an earlier connection is used.
+
+```ini
+; PlatformIO (platformio.ini)
+build_flags = ${option_release.build_flags}
+  -DEXAMPLE_SSID="\"YOUR_SSID\""
+  -DEXAMPLE_PASSWORD="\"PASSWORD\""
+```
+
 AlarmNotify / PeriodicTimer are for Unit RTC only: on Tab5 the interrupt output of the RX8130CE is wired to the power
 controller, so these examples, which enable the alarm / timer interrupt, must not be used with the built-in RTC.
 
@@ -70,7 +80,8 @@ controller, so these examples, which enable the alarm / timer interrupt, must no
 
 On ESP-IDF native builds (`idf.py`), the RTC of NTPSync is selected via Kconfig instead of editing the source `#define`:
 `idf.py menuconfig` → **M5Unit-RTC NTPSync example** → **Target RTC**. The **M5Tab5 built-in RX8130CE** option appears
-only when the target is esp32p4. The other examples need no Kconfig choice. Build them directly:
+only when the target is esp32p4. The Wi-Fi credentials are set in **NTPSync settings**.
+The other examples need no Kconfig choice. Build them directly:
 
 ```sh
 cd examples/UnitUnified/UnitRTC/PeriodicTimer
