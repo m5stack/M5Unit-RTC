@@ -152,7 +152,7 @@ void setup()
         static_cast<float>(std::max<int32_t>(1, std::min(lcd.width() / CANVAS_WIDTH, lcd.height() / CANVAS_HEIGHT)));
     lcd.fillScreen(TFT_BLACK);
 
-    // Start with first mode
+    // Start with the first interval
     start_timer();
 }
 

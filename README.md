@@ -49,7 +49,8 @@ See also [examples/UnitUnified](examples/UnitUnified)
 
 ### For ArduinoIDE settings
 
-NTPSync works with Unit RTC by default. To use the built-in RX8130CE of Tab5, choose the define symbol in the source.
+NTPSync works with Unit RTC by default. To use the built-in RX8130CE of Tab5, choose the define symbol in
+`examples/UnitUnified/UnitRTC/NTPSync/main/NTPSync.cpp`.
 
 ```cpp
 // *************************************************************
@@ -58,20 +59,15 @@ NTPSync works with Unit RTC by default. To use the built-in RX8130CE of Tab5, ch
 #if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
 // For Unit RTC (U126)
 #define USING_UNIT_RTC
-// For the built-in RX8130CE of Tab5 (internal I2C)
+// For Tab5 (C145) built-in RX8130CE (internal I2C)
 // #define BUILTIN_UNIT_RX8130
 #endif
 ```
 
-NTPSync takes the Wi-Fi credentials from `EXAMPLE_SSID` / `EXAMPLE_PASSWORD`. Fill in the defines in the source or give
-them as build options. With an empty SSID, the config stored in NVS by an earlier connection is used.
-
-```ini
-; PlatformIO (platformio.ini)
-build_flags = ${option_release.build_flags}
-  -DEXAMPLE_SSID="\"YOUR_SSID\""
-  -DEXAMPLE_PASSWORD="\"PASSWORD\""
-```
+NTPSync takes the Wi-Fi credentials from `EXAMPLE_SSID` / `EXAMPLE_PASSWORD`. Fill in the defines in
+`examples/UnitUnified/UnitRTC/NTPSync/main/NTPSync.cpp`, or give them as compile options
+(`-DEXAMPLE_SSID="\"YOUR_SSID\"" -DEXAMPLE_PASSWORD="\"PASSWORD\""`).
+With an empty SSID, the config stored in NVS by an earlier connection is used.
 
 AlarmNotify / PeriodicTimer are for Unit RTC only: on Tab5 the interrupt output of the RX8130CE is wired to the power
 controller, so these examples, which enable the alarm / timer interrupt, must not be used with the built-in RTC.

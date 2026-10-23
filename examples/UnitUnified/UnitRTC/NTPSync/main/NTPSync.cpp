@@ -21,7 +21,7 @@
 #if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
 // For Unit RTC (U126)
 #define USING_UNIT_RTC
-// For the built-in RX8130CE of Tab5 (internal I2C)
+// For Tab5 (C145) built-in RX8130CE (internal I2C)
 // #define BUILTIN_UNIT_RX8130
 #endif
 #include <esp_idf_version.h>
