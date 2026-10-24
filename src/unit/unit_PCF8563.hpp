@@ -229,6 +229,10 @@ public:
       @note Automatically selects Hz1 (< 270s) or HzPM (>= 270s) clock source.
             Clears the timer flag (the alarm flag is kept), enables timer and timer interrupt.
             The /INT output mode (TI_TP) is kept. Maximum: 255 minutes (15,300,000 ms).
+      @note Only the first period is shorter. The Unit RTC chip decrements the countdown as soon as the timer
+            starts and counts on the seconds tick, so with the 1 Hz source the first TF comes after more than N-2
+            and at most N-1 seconds (N = period in seconds), then every N seconds. The NXP PCF8563 also has an
+            uncertain first period ((N-1) + 1/64 s to N + 1/64 s with the 1 Hz source, NXP UM10301 chapter 17).
      */
     uint32_t writeTimer(const uint32_t msec);
     /*!

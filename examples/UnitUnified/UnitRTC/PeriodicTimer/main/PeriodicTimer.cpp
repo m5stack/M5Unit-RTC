@@ -6,6 +6,7 @@
 /*
   Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
   - Periodic countdown timer using writeTimer() convenience API (it repeats until writeTimer(0) stops it)
+  - The first period is 1 to 2 seconds shorter than the interval, the later ones are exact (see writeTimer())
   - BtnA click: cycle the interval
     5s -> 10s -> 30s -> stop -> ...
 */
