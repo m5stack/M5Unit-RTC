@@ -188,7 +188,9 @@ bool sync_sntp()
     sntp_init();
     const auto start_at = m5::utility::millis();
     auto dot_at         = start_at;
-    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED &&
+    // sntp_get_sync_status() resets the status after returning COMPLETED, so read it only once per check
+    sntp_sync_status_t status{SNTP_SYNC_STATUS_RESET};
+    while ((status = sntp_get_sync_status()) != SNTP_SYNC_STATUS_COMPLETED &&
            !m5::utility::hasElapsed(start_at, SYNC_TIMEOUT_MS)) {
         m5::utility::delay(100);
         if (m5::utility::hasElapsed(dot_at, 1000)) {
@@ -197,9 +199,8 @@ bool sync_sntp()
         }
     }
     progress_printf("\n");
-    const bool synced = (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED);
     sntp_stop();
-    return synced;
+    return status == SNTP_SYNC_STATUS_COMPLETED;
 #endif
 }
 
