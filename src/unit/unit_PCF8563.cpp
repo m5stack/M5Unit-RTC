@@ -518,56 +518,48 @@ bool UnitPCF8563::clearAlarmFlag()
 
 uint32_t UnitPCF8563::writeTimer(const uint32_t msec)
 {
-    // Read CONTROL2 once, then clear TF
-    uint8_t ctrl2{};
-    if (!read_control2(ctrl2)) {
-        return 0;
-    }
-    // Clear TF and reserved bits 7-5. AF is written back as read, TIE and TI_TP (/INT output mode) are kept
-    ctrl2 &= ~CTRL2_TF;
-    ctrl2 &= CTRL2_WRITABLE;
-
     // Round to seconds (without overflow near UINT32_MAX)
     uint32_t afterSeconds{msec / 1000 + ((msec % 1000) >= 500 ? 1U : 0U)};
-    if (afterSeconds == 0) {
-        if (msec) {
-            M5_LIB_LOGW("Period %lu ms is rounded to 0 s, the timer is stopped", static_cast<unsigned long>(msec));
-        }
-        // Disable: write CONTROL2 (TF cleared, AF and TIE kept) + disable timer
-        if (!write_register8(CONTROL2_REG, ctrl2) || !writeTimerControl(false, pcf8563::TimerClock::HzPM)) {
-            M5_LIB_LOGW("Failed to disable timer");
-        }
-        return 0;
+    if (afterSeconds == 0 && msec) {
+        M5_LIB_LOGW("Period %lu ms is rounded to 0 s, the timer is stopped", static_cast<unsigned long>(msec));
     }
 
     uint32_t div{1};
-    pcf8563::TimerClock clock{pcf8563::TimerClock::Hz1};
-    if (afterSeconds < 270) {
-        if (afterSeconds > 255) {
-            M5_LIB_LOGW("Period %lu ms is limited to 255 s", static_cast<unsigned long>(msec));
-            afterSeconds = 255;
-        }
-    } else {
+    pcf8563::TimerClock clock{pcf8563::TimerClock::HzPM};  // also used while stopped (power saving)
+    if (afterSeconds >= 270) {
         div          = 60;
         afterSeconds = (afterSeconds + 30) / div;
         if (afterSeconds > 255) {
             M5_LIB_LOGW("Period %lu ms is limited to 255 min", static_cast<unsigned long>(msec));
             afterSeconds = 255;
         }
-        clock = pcf8563::TimerClock::HzPM;
+    } else if (afterSeconds) {
+        if (afterSeconds > 255) {
+            M5_LIB_LOGW("Period %lu ms is limited to 255 s", static_cast<unsigned long>(msec));
+            afterSeconds = 255;
+        }
+        clock = pcf8563::TimerClock::Hz1;
     }
 
-    if (!write_register8(CONTROL2_REG, ctrl2)) {
+    // Stop the timer before TF is cleared, so that the old countdown cannot set TF again in between.
+    // Then clear TF and reserved bits 7-5 (AF is written back as read, TIE and TI_TP are kept)
+    const uint8_t td{static_cast<uint8_t>(static_cast<uint8_t>(clock) & 0x03)};
+    uint8_t ctrl2{};
+    if (!write_register8(TIMER_CONTROL_REG, td)  // TE=0 + TD (stop)
+        || !read_control2(ctrl2) ||
+        !write_register8(CONTROL2_REG, static_cast<uint8_t>(ctrl2 & ~CTRL2_TF & CTRL2_WRITABLE))) {
+        M5_LIB_LOGW("Failed to stop the timer");
+        return 0;
+    }
+    if (afterSeconds == 0) {
         return 0;
     }
 
-    // Disable timer first, then set countdown value, then enable.
+    // Set the countdown value, then enable.
     // Writing TE=1 and countdown as consecutive bytes (0x0E, 0x0F) risks the
     // timer starting with the OLD countdown value before 0x0F is updated.
-    const uint8_t td{static_cast<uint8_t>(static_cast<uint8_t>(clock) & 0x03)};
-    if (!write_register8(TIMER_CONTROL_REG, td)                             // TE=0 + TD (stop)
-        || !write_register8(TIMER_REG, static_cast<uint8_t>(afterSeconds))  // countdown value
-        || !write_register8(TIMER_CONTROL_REG, 0x80 | td)) {                // TE=1 + TD (start)
+    if (!write_register8(TIMER_REG, static_cast<uint8_t>(afterSeconds))  // countdown value
+        || !write_register8(TIMER_CONTROL_REG, 0x80 | td)) {             // TE=1 + TD (start)
         // Timer may be in inconsistent state; disable it
         write_register8(TIMER_CONTROL_REG, 0x03);  // TE=0, TD=11 (low power)
         return 0;
