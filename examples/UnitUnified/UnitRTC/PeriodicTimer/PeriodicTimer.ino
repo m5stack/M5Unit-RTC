@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 /*
-  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
+  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563) or the built-in RX8130CE of Tab5
   - Periodic timer demo
 */
 #include "main/PeriodicTimer.cpp"
