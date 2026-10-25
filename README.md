@@ -24,7 +24,8 @@ supercapacitor is on VBAT (e.g. Tab5, StampPLC). Never turn it on with a primary
 ### Interrupt output
 
 `writeAlarm()` / `writeTimer()` do not enable the interrupt output (AIE / TIE): the flags are polled by `update()`.
-Enable it with `writeAlarmInterrupt()` / `writeTimerInterrupt()` when the interrupt pin is used.
+Enable it with `writeAlarmInterrupt()` / `writeTimerInterrupt()` (and `writeUpdateInterrupt()` of UnitRX8130) when
+the interrupt pin is used.
 The M5Unified compatible `setAlarmIRQ()` / `setTimerIRQ()` enable it, as M5Unified does.
 
 ## Related Link
