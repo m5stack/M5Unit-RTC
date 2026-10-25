@@ -75,7 +75,7 @@ protected:
         return M5.getBoard() != m5::board_t::board_M5Tab5;
     }
 
-    // Where /IRQ is not allowed, stop the clock (STOP) while an interrupt enable bit is set for settings tests.
+    // Where /IRQ is not allowed, stop the clock (STOP) while AIE is set for settings tests.
     // STOP = 1 stops alarm and time update events, and the wakeup timer except at 4096 Hz.
     // The time is restored in TearDown
     void hold_clock(const bool hold)
@@ -262,7 +262,7 @@ TEST_F(TestRX8130, Alarm)
 
         bool enabled{true};
         EXPECT_TRUE(unit->readAlarmInterrupt(enabled));
-        EXPECT_FALSE(enabled);  // AIE is kept (0 after begin())
+        EXPECT_FALSE(enabled);  // AIE is kept (0 after disableIRQ() in SetUp())
         uint8_t weekdays{0xFF};
         EXPECT_TRUE(unit->readAlarmWeekdays(weekdays));
         EXPECT_EQ(weekdays, 0);
@@ -851,6 +851,9 @@ TEST_F(TestRX8130, CompatAPI)
         hold_clock(true);
         m5::rtc_time_t at{6, 30, 0};
         EXPECT_EQ(unit->setAlarmIRQ(at), 1);
+        bool aie{};
+        EXPECT_TRUE(unit->readAlarmInterrupt(aie));
+        EXPECT_TRUE(aie);  // As M5Unified, setAlarmIRQ() enables AIE
         rtc_time_t rt{};
         rtc_date_t rd{};
         EXPECT_TRUE(unit->readAlarm(rt, rd));
@@ -866,6 +869,9 @@ TEST_F(TestRX8130, CompatAPI)
 
         m5::rtc_time_t none{-1, -1, -1};
         EXPECT_EQ(unit->setAlarmIRQ(none), 0);
+        aie = true;
+        EXPECT_TRUE(unit->readAlarmInterrupt(aie));
+        EXPECT_FALSE(aie);
         hold_clock(false);
     }
 
