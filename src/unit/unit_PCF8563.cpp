@@ -485,6 +485,9 @@ uint32_t UnitPCF8563::writeTimer(const uint32_t msec)
     // Round to seconds (without overflow near UINT32_MAX)
     uint32_t afterSeconds{msec / 1000 + ((msec % 1000) >= 500 ? 1U : 0U)};
     if (afterSeconds == 0) {
+        if (msec) {
+            M5_LIB_LOGW("Period %lu ms is rounded to 0 s, the timer is stopped", static_cast<unsigned long>(msec));
+        }
         // Disable: write CONTROL2 (TF cleared, AF and TIE kept) + disable timer
         if (!write_register8(CONTROL2_REG, ctrl2) || !writeTimerControl(false, pcf8563::TimerClock::HzPM)) {
             M5_LIB_LOGW("Failed to disable timer");
@@ -496,12 +499,14 @@ uint32_t UnitPCF8563::writeTimer(const uint32_t msec)
     pcf8563::TimerClock clock{pcf8563::TimerClock::Hz1};
     if (afterSeconds < 270) {
         if (afterSeconds > 255) {
+            M5_LIB_LOGW("Period %lu ms is limited to 255 s", static_cast<unsigned long>(msec));
             afterSeconds = 255;
         }
     } else {
         div          = 60;
         afterSeconds = (afterSeconds + 30) / div;
         if (afterSeconds > 255) {
+            M5_LIB_LOGW("Period %lu ms is limited to 255 min", static_cast<unsigned long>(msec));
             afterSeconds = 255;
         }
         clock = pcf8563::TimerClock::HzPM;
@@ -682,6 +687,12 @@ int UnitPCF8563::setAlarmIRQ(const int afterSeconds)
 
 uint32_t UnitPCF8563::setTimerIRQ(const uint32_t timer_msec)
 {
+    // 0 stops the timer
+    if (!timer_msec) {
+        writeTimer(0);
+        writeTimerInterrupt(false);
+        return 0;
+    }
     // As M5Unified, the timer interrupt is enabled too. TIE is set while the timer is stopped,
     // so the first countdown cannot precede it
     writeTimer(0);

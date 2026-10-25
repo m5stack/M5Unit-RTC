@@ -506,10 +506,10 @@ public:
     int setAlarmIRQ(const int afterSeconds);
     /*!
       @brief Set timer IRQ in milliseconds
-      @param timer_msec Timer period in milliseconds (0 to disable)
+      @param timer_msec Timer period in milliseconds (0, or less than 500, to disable)
       @return Actual milliseconds set (0 if disabled or on failure)
       @note The timer repeats; see writeTimer()
-      @note As M5Unified, the timer interrupt (TIE) is enabled too, before the timer starts (disabled by 0)
+      @note As M5Unified, the timer interrupt (TIE) is enabled too, before the timer starts (disabled when the timer is)
      */
     uint32_t setTimerIRQ(const uint32_t timer_msec);
 
