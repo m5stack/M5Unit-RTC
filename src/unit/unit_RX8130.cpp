@@ -601,7 +601,7 @@ bool UnitRX8130::writeAlarm(const rx8130::rtc_time_t& time, const rx8130::rtc_da
         day_week = static_cast<uint8_t>(1U << date.weekDay);
         wada     = false;
     }
-    const bool has_alarm = (time.minutes >= 0 || time.hours >= 0 || date.date >= 0 || date.weekDay >= 0);
+    const bool has_alarm{time.minutes >= 0 || time.hours >= 0 || date.date >= 0 || date.weekDay >= 0};
     return write_alarm(min, hour, day_week, wada, has_alarm);
 }
 
@@ -611,9 +611,9 @@ bool UnitRX8130::writeAlarmWeekdays(const rx8130::rtc_time_t& time, const uint8_
         M5_LIB_LOGE("Invalid alarm %d:%d W:%02X", time.hours, time.minutes, weekdays);
         return false;
     }
-    const uint8_t min    = (time.minutes < 0) ? ALARM_AE : byte2bcd(time.minutes);
-    const uint8_t hour   = (time.hours < 0) ? ALARM_AE : byte2bcd(time.hours);
-    const bool has_alarm = (time.minutes >= 0 || time.hours >= 0 || weekdays);
+    const uint8_t min  = (time.minutes < 0) ? ALARM_AE : byte2bcd(time.minutes);
+    const uint8_t hour = (time.hours < 0) ? ALARM_AE : byte2bcd(time.hours);
+    const bool has_alarm{time.minutes >= 0 || time.hours >= 0 || weekdays != 0};
     return write_alarm(min, hour, weekdays ? weekdays : ALARM_AE, false, has_alarm);
 }
 
@@ -1119,9 +1119,12 @@ int UnitRX8130::setAlarmIRQ(const int afterSeconds)
 
 uint32_t UnitRX8130::setTimerIRQ(const uint32_t timer_msec)
 {
-    // As M5Unified on Tab5, a positive period is refused where the periodic interrupts are not allowed
-    if (timer_msec && !_periodic_irq) {
-        M5_LIB_LOGW("Periodic timer IRQ is not allowed on this RTC");
+    // 0 stops the timer. As M5Unified on Tab5, a positive period is refused (stopped too)
+    // where the periodic interrupts are not allowed
+    if (!timer_msec || !_periodic_irq) {
+        if (timer_msec) {
+            M5_LIB_LOGW("Periodic timer IRQ is not allowed on this RTC");
+        }
         writeTimer(0);
         writeTimerInterrupt(false);
         return 0;
