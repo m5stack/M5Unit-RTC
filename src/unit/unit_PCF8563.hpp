@@ -176,17 +176,23 @@ public:
       @note A flag is cleared by read-modify-write of CONTROL2, writing the other flag back as read
       (on the Unit RTC writing 1 sets a flag, unlike the datasheets). The other flag set between
       the read and the write is lost.
+
+      @note writeAlarm() and writeTimer() do not change the interrupt enable bits (AIE / TIE).
+      The flags are set either way, so the polling mode needs no enable bit.
+      To drive INT (the hardware interrupt mode, or a wakeup through the board), enable it with
+      writeAlarmInterrupt() / writeTimerInterrupt().
+      The M5Unified compatible setAlarmIRQ() / setTimerIRQ() enable it, as M5Unified does.
      */
     ///@name Alarm/Timer
     ///@{
     /*!
-      @brief Set alarm and enable interrupt
+      @brief Set alarm
       @param time Alarm time (minutes, hours). Negative fields are disabled.
       @param date Alarm date (date, weekDay). Negative fields are disabled.
       @return True if successful, false if a non-negative field is out of range
               (minutes 0-59, hours 0-23, date 1-31, weekDay 0-6) or on failure
-      @note Clears alarm flag, writes alarm registers, and enables alarm interrupt
-            if any field is non-negative. Disables alarm interrupt if all fields are negative.
+      @note Writes the alarm registers and clears the alarm flag. The alarm interrupt (AIE) is kept;
+            enable it with writeAlarmInterrupt() to drive INT
      */
     bool writeAlarm(const pcf8563::rtc_time_t& time, const pcf8563::rtc_date_t& date);
     /*!
@@ -227,8 +233,9 @@ public:
       @note The timer repeats: the PCF8563 reloads the countdown every period and sets TF each time
             (it has no one-shot mode). Stop it with writeTimer(0), e.g. in the on_timer callback.
       @note Automatically selects Hz1 (< 270s) or HzPM (>= 270s) clock source.
-            Clears the timer flag (the alarm flag is kept), enables timer and timer interrupt.
-            The /INT output mode (TI_TP) is kept. Maximum: 255 minutes (15,300,000 ms).
+            Clears the timer flag (the alarm flag is kept) and starts the timer. The timer interrupt (TIE)
+            and the /INT output mode (TI_TP) are kept; enable TIE with writeTimerInterrupt() to drive INT.
+            Maximum: 255 minutes (15,300,000 ms).
       @note Only the first period is shorter. The Unit RTC chip decrements the countdown as soon as the timer
             starts and counts on the seconds tick, so with the 1 Hz source the first TF comes after more than N-2
             and at most N-1 seconds (N = period in seconds), then every N seconds. The NXP PCF8563 also has an
@@ -281,6 +288,8 @@ public:
       @brief Write timer interrupt enable state
       @param enabled True to enable timer interrupt (TIE bit)
       @return True if successful
+      @note With the pulse output (TI_TP=1), enable it before writeTimer() starts the timer,
+            so that the first countdown cannot precede it
      */
     bool writeTimerInterrupt(const bool enabled);
     /*!
@@ -474,6 +483,7 @@ public:
       @param date Date (can be nullptr). Negative fields are ignored.
       @param time Time (can be nullptr). Negative fields are ignored.
       @return 1 if enabled, 0 if disabled or on failure
+      @note As M5Unified, the alarm interrupt (AIE) is enabled too (disabled if all fields are negative)
      */
     int setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* time);
     //! @brief Set alarm by date and time (reference)
@@ -491,6 +501,7 @@ public:
       @param afterSeconds Timer period in seconds (negative to disable), limited to UINT32_MAX / 1000
       @return Actual seconds set, -1 if disabled by a negative value, 0 if disabled by 0 or on failure
       @note The timer repeats; see writeTimer()
+      @note As M5Unified, the timer interrupt (TIE) is enabled too; see setTimerIRQ()
      */
     int setAlarmIRQ(const int afterSeconds);
     /*!
@@ -498,6 +509,7 @@ public:
       @param timer_msec Timer period in milliseconds (0 to disable)
       @return Actual milliseconds set (0 if disabled or on failure)
       @note The timer repeats; see writeTimer()
+      @note As M5Unified, the timer interrupt (TIE) is enabled too, before the timer starts (disabled by 0)
      */
     uint32_t setTimerIRQ(const uint32_t timer_msec);
 

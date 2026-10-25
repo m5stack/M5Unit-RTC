@@ -14,12 +14,23 @@ It uses the I2C communication interface (address 0x51). This library also suppor
 
 The Epson RX8130CE real-time clock built into M5Stack boards such as Tab5 (UnitRX8130, on the internal I2C bus, address 0x32).
 
+On Tab5 use `Tab5BuiltinRTC` (a UnitRX8130 subclass). The interrupt output of the RX8130CE drives the power controller of
+Tab5, and a periodic timer interrupt left enabled can make it unbootable. `Tab5BuiltinRTC` refuses the timer and the
+update interrupts (as M5Unified does on Tab5) and charges the backup supercapacitor by default.
+
 Charging of the backup battery (`config_t::charge`) is off by default. Turn it on only when a rechargeable battery or a
 supercapacitor is on VBAT (e.g. Tab5, StampPLC). Never turn it on with a primary cell (e.g. the CR2032 of ToughC5).
+
+### Interrupt output
+
+`writeAlarm()` / `writeTimer()` do not enable the interrupt output (AIE / TIE): the flags are polled by `update()`.
+Enable it with `writeAlarmInterrupt()` / `writeTimerInterrupt()` when the interrupt pin is used.
+The M5Unified compatible `setAlarmIRQ()` / `setTimerIRQ()` enable it, as M5Unified does.
 
 ## Related Link
 
 - [Unit RTC & Datasheet](https://docs.m5stack.com/en/products/sku/U126)
+- [M5Stack Tab5 & Datasheet](https://docs.m5stack.com/en/core/Tab5)
 
 ## Required Libraries
 
@@ -69,8 +80,7 @@ NTPSync takes the Wi-Fi credentials from `EXAMPLE_SSID` / `EXAMPLE_PASSWORD`. Fi
 (`-DEXAMPLE_SSID="\"YOUR_SSID\"" -DEXAMPLE_PASSWORD="\"PASSWORD\""`).
 With an empty SSID, the config stored in NVS by an earlier connection is used.
 
-AlarmNotify / PeriodicTimer are for Unit RTC only: on Tab5 the interrupt output of the RX8130CE is wired to the power
-controller, so these examples, which enable the alarm / timer interrupt, must not be used with the built-in RTC.
+AlarmNotify / PeriodicTimer are for Unit RTC. They poll the flags with update() and do not enable the interrupt output.
 
 ### For ESP-IDF settings
 

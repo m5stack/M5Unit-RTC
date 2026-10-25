@@ -346,6 +346,41 @@ TEST_F(TestPCF8563, Timer)
 }
 
 // ============================================================
+// writeAlarm() / writeTimer() keep the interrupt enable bits (AIE / TIE)
+// ============================================================
+
+TEST_F(TestPCF8563, InterruptEnableKept)
+{
+    SCOPED_TRACE(ustr);
+
+    const rtc_time_t at(12, 30, -1);
+    const rtc_date_t ad(2000, 1, -1, -1);
+    for (const bool ie : {false, true}) {
+        auto s = m5::utility::formatString("Enabled %d", ie ? 1 : 0);
+        SCOPED_TRACE(s);
+
+        bool read_ie{!ie};
+        EXPECT_TRUE(unit->writeAlarmInterrupt(ie));
+        EXPECT_TRUE(unit->writeAlarm(at, ad));
+        EXPECT_TRUE(unit->readAlarmInterrupt(read_ie));
+        EXPECT_EQ(read_ie, ie);
+
+        read_ie = !ie;
+        EXPECT_TRUE(unit->writeTimerInterrupt(ie));
+        EXPECT_EQ(unit->writeTimer(5000), 5000U);
+        EXPECT_TRUE(unit->readTimerInterrupt(read_ie));
+        EXPECT_EQ(read_ie, ie);
+
+        read_ie = !ie;
+        EXPECT_EQ(unit->writeTimer(0), 0U);
+        EXPECT_TRUE(unit->readTimerInterrupt(read_ie));
+        EXPECT_EQ(read_ie, ie);
+    }
+    EXPECT_TRUE(unit->writeAlarmInterrupt(false));
+    EXPECT_TRUE(unit->writeTimerInterrupt(false));
+}
+
+// ============================================================
 // Clock Control
 // ============================================================
 
@@ -654,11 +689,12 @@ TEST_F(TestPCF8563, CompatAlarmTimer)
         EXPECT_FALSE(enabled);
     }
 
-    // --- writeTimer vs setTimerIRQ equivalence ---
+    // --- writeTimer vs setTimerIRQ: the same timer, only setTimerIRQ() enables TIE ---
     {
         SCOPED_TRACE("writeTimer vs setTimerIRQ");
 
         // writeTimer
+        EXPECT_TRUE(unit->writeTimerInterrupt(false));
         uint32_t actual1 = unit->writeTimer(5000);
 
         bool en1{};
@@ -683,23 +719,28 @@ TEST_F(TestPCF8563, CompatAlarmTimer)
         bool tie2{};
         EXPECT_TRUE(unit->readTimerInterrupt(tie2));
 
-        // Should produce identical results
+        // Should produce identical timer settings
         EXPECT_EQ(actual1, actual2);
         EXPECT_EQ(en1, en2);
         EXPECT_EQ(clk1, clk2);
         // Timer values may differ by 1 due to countdown, accept that
         EXPECT_TRUE(val1 == val2 || val1 == val2 + 1 || val1 + 1 == val2)
             << "val1=" << (unsigned)val1 << " val2=" << (unsigned)val2;
-        EXPECT_EQ(tie1, tie2);
+        EXPECT_FALSE(tie1);
+        EXPECT_TRUE(tie2);
 
-        unit->writeTimer(0);
+        // setTimerIRQ(0) disables TIE too
+        EXPECT_EQ(unit->setTimerIRQ(0), 0U);
+        EXPECT_TRUE(unit->readTimerInterrupt(tie2));
+        EXPECT_FALSE(tie2);
     }
 
-    // --- writeAlarm vs setAlarmIRQ equivalence ---
+    // --- writeAlarm vs setAlarmIRQ: the same alarm, only setAlarmIRQ() enables AIE ---
     {
         SCOPED_TRACE("writeAlarm vs setAlarmIRQ");
 
         // writeAlarm
+        EXPECT_TRUE(unit->writeAlarmInterrupt(false));
         rtc_time_t at(14, 30, -1);
         rtc_date_t ad(2000, 1, 25, -1);
         EXPECT_TRUE(unit->writeAlarm(at, ad));
@@ -727,7 +768,9 @@ TEST_F(TestPCF8563, CompatAlarmTimer)
         EXPECT_EQ(rt1.hours, rt2.hours);
         EXPECT_EQ(rd1.date, rd2.date);
         EXPECT_EQ(rd1.weekDay, rd2.weekDay);
-        EXPECT_EQ(aie1, aie2);
+        EXPECT_FALSE(aie1);
+        EXPECT_TRUE(aie2);
+        EXPECT_TRUE(unit->writeAlarmInterrupt(false));
     }
 
     // --- getIRQstatus ---
@@ -968,9 +1011,6 @@ TEST_F(TestPCF8563, TimerRepeats)
     EXPECT_EQ(unit->writeTimer(0), 0U);
     EXPECT_TRUE(unit->readTimerControl(enabled, clk));
     EXPECT_FALSE(enabled);
-    bool ie{true};
-    EXPECT_TRUE(unit->readTimerInterrupt(ie));
-    EXPECT_FALSE(ie);
 }
 
 // ============================================================

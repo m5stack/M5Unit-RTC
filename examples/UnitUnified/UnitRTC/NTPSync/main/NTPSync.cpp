@@ -126,7 +126,7 @@ m5::unit::UnitRTC unit;
 #if !defined(CONFIG_IDF_TARGET_ESP32P4)
 #error "BUILTIN_UNIT_RX8130 is for Tab5 (ESP32-P4)"
 #endif
-m5::unit::UnitRX8130 unit;
+m5::unit::Tab5BuiltinRTC unit;  // charges the backup supercapacitor (BT1) by default
 #else
 #error "Choose the RTC"
 #endif
@@ -285,12 +285,6 @@ void setup()
     if (M5.getBoard() != m5::board_t::board_M5Tab5) {
         M5_LOGE("The board is not Tab5");
         m5::unit::wiring::failStop();
-    }
-    // Tab5 keeps the RTC with a supercapacitor (BT1), so let the RX8130CE charge it
-    {
-        auto cfg   = unit.config();
-        cfg.charge = true;
-        unit.config(cfg);
     }
     bool unit_ready = Units.add(unit, M5.In_I2C) && Units.begin();
 #else

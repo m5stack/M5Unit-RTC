@@ -12,7 +12,7 @@
 #include <M5UnitUnified.hpp>
 #include <googletest/test_template.hpp>
 #include <googletest/test_helper.hpp>
-#include <unit/unit_RX8130.hpp>
+#include <M5UnitUnifiedRTC.hpp>
 #include <sys/time.h>
 #include <cstring>
 
@@ -22,9 +22,11 @@ using namespace m5::unit::rx8130;
 
 class TestRX8130 : public I2CComponentTestBase<UnitRX8130> {
 protected:
+    // Tab5BuiltinRTC on Tab5 (it refuses the timer and update interrupts)
     virtual UnitRX8130* get_instance() override
     {
-        return new m5::unit::UnitRX8130();
+        return (M5.getBoard() == m5::board_t::board_M5Tab5) ? new m5::unit::Tab5BuiltinRTC()
+                                                            : new m5::unit::UnitRX8130();
     }
 
     // The RX8130CE is on the internal bus, not on the GROVE port
@@ -66,40 +68,11 @@ protected:
     }
 
     // On Tab5 the /IRQ output drives the power controller (E_TRG), so it must stay Hi-Z.
-    // There, events are checked by the flags only (with AIE/TIE/UIE = 0 the flags are set but /IRQ stays Hi-Z)
+    // There, events are checked by the flags only (with AIE/TIE/UIE = 0 the flags are set but /IRQ stays Hi-Z).
+    // Tab5BuiltinRTC refuses TIE / UIE; AIE is set only while the clock is held (hold_clock())
     bool irq_output_allowed() const
     {
         return M5.getBoard() != m5::board_t::board_M5Tab5;
-    }
-
-    // writeTimer() always sets TIE. Where /IRQ is not allowed, pause the countdown (TSTP) until TIE is cleared
-    uint32_t start_timer(const uint32_t msec)
-    {
-        if (irq_output_allowed()) {
-            return unit->writeTimer(msec);
-        }
-        EXPECT_TRUE(unit->writeTimerCountMode(TimerCountMode::Always));  // TSTP is ignored when TBKE = 1
-        EXPECT_TRUE(unit->writeTimerPause(true));
-        auto actual = unit->writeTimer(msec);
-        EXPECT_TRUE(unit->writeTimerInterrupt(false));
-        EXPECT_TRUE(unit->writeTimerPause(false));
-        return actual;
-    }
-
-    // Disable the alarm interrupt output where /IRQ is not allowed (the alarm flag is still set)
-    void mask_alarm_output()
-    {
-        if (!irq_output_allowed()) {
-            EXPECT_TRUE(unit->writeAlarmInterrupt(false));
-        }
-    }
-
-    // Disable the wakeup timer interrupt output where /IRQ is not allowed (the timer flag is still set)
-    void mask_timer_output()
-    {
-        if (!irq_output_allowed()) {
-            EXPECT_TRUE(unit->writeTimerInterrupt(false));
-        }
     }
 
     // Where /IRQ is not allowed, stop the clock (STOP) while an interrupt enable bit is set for settings tests.
@@ -287,9 +260,9 @@ TEST_F(TestRX8130, Alarm)
         EXPECT_EQ(rd.date, 15);
         EXPECT_EQ(rd.weekDay, -1);
 
-        bool enabled{};
+        bool enabled{true};
         EXPECT_TRUE(unit->readAlarmInterrupt(enabled));
-        EXPECT_TRUE(enabled);
+        EXPECT_FALSE(enabled);  // AIE is kept (0 after begin())
         uint8_t weekdays{0xFF};
         EXPECT_TRUE(unit->readAlarmWeekdays(weekdays));
         EXPECT_EQ(weekdays, 0);
@@ -331,7 +304,21 @@ TEST_F(TestRX8130, Alarm)
         EXPECT_FALSE(unit->writeAlarmWeekdays(rtc_time_t(7, 0, -1), 0x80));
     }
 
-    // --- All fields disabled ---
+    // --- AIE is kept ---
+    {
+        SCOPED_TRACE("AIE kept");
+        EXPECT_TRUE(unit->writeAlarmInterrupt(true));
+        EXPECT_TRUE(unit->writeAlarm(rtc_time_t(12, 30, -1), rtc_date_t(2000, 1, 15, -1)));
+        bool enabled{};
+        EXPECT_TRUE(unit->readAlarmInterrupt(enabled));
+        EXPECT_TRUE(enabled);
+        EXPECT_TRUE(unit->writeAlarmWeekdays(rtc_time_t(7, 0, -1), 0x3E));
+        enabled = false;
+        EXPECT_TRUE(unit->readAlarmInterrupt(enabled));
+        EXPECT_TRUE(enabled);
+    }
+
+    // --- All fields disabled (AIE is cleared, the chip would raise the alarm every minute) ---
     {
         SCOPED_TRACE("Alarm all disabled");
         EXPECT_TRUE(unit->writeAlarm(rtc_time_t(-1, -1, -1), rtc_date_t(2000, 1, -1, -1)));
@@ -376,8 +363,7 @@ TEST_F(TestRX8130, Alarm)
     {
         SCOPED_TRACE("Alarm fires");
         EXPECT_TRUE(unit->writeDateTime(rtc_datetime_t(rtc_date_t(2026, 10, 22, 4), rtc_time_t(12, 0, 58))));
-        EXPECT_TRUE(unit->writeAlarm(rtc_time_t(12, 1, -1), rtc_date_t(2000, 1, 22, -1)));
-        mask_alarm_output();
+        EXPECT_TRUE(unit->writeAlarm(rtc_time_t(12, 1, -1), rtc_date_t(2000, 1, 22, -1)));  // AIE stays 0
 
         bool fired{true};
         EXPECT_TRUE(unit->readAlarmFlag(fired));
@@ -443,9 +429,16 @@ TEST_F(TestRX8130, Timer)
         SCOPED_TRACE("Control bits");
         bool b{};
         EXPECT_TRUE(unit->clearTimerFlag());  // the timer is stopped (TE = 0), so no event occurs while TIE is set
-        EXPECT_TRUE(unit->writeTimerInterrupt(true));
-        EXPECT_TRUE(unit->readTimerInterrupt(b));
-        EXPECT_TRUE(b);
+        if (irq_output_allowed()) {
+            EXPECT_TRUE(unit->writeTimerInterrupt(true));
+            EXPECT_TRUE(unit->readTimerInterrupt(b));
+            EXPECT_TRUE(b);
+        } else {
+            EXPECT_FALSE(unit->writeTimerInterrupt(true));  // refused by Tab5BuiltinRTC
+            b = true;
+            EXPECT_TRUE(unit->readTimerInterrupt(b));
+            EXPECT_FALSE(b);
+        }
         EXPECT_TRUE(unit->writeTimerInterrupt(false));
         EXPECT_TRUE(unit->readTimerInterrupt(b));
         EXPECT_FALSE(b);
@@ -484,13 +477,10 @@ TEST_F(TestRX8130, Timer)
         EXPECT_TRUE(unit->writeTimerControl(false, TimerClock::Hz64));
     }
 
-    // --- writeTimer selects the clock ---
+    // --- writeTimer selects the clock (TIE is kept, 0 here) ---
     {
         SCOPED_TRACE("writeTimer");
-        // Settings only: keep the countdown paused so that no event occurs while TIE is set
-        EXPECT_TRUE(unit->writeTimerCountMode(TimerCountMode::Always));  // TSTP is ignored when TBKE = 1
-        EXPECT_TRUE(unit->writeTimerPause(true));
-        hold_clock(true);
+        EXPECT_TRUE(unit->writeTimerInterrupt(false));
         struct {
             uint32_t msec;
             TimerClock clock;
@@ -504,11 +494,10 @@ TEST_F(TestRX8130, Timer)
             auto actual = unit->writeTimer(e.msec);
             EXPECT_NEAR(static_cast<double>(actual), static_cast<double>(e.msec), e.msec / 256.0 + 1);
 
-            bool enabled{}, ie{};
+            bool enabled{}, ie{true};
             TimerClock clk{};
             EXPECT_TRUE(unit->readTimerInterrupt(ie));
-            EXPECT_TRUE(ie);
-            mask_timer_output();  // 4096 Hz is not stopped by STOP; clear TIE as soon as it is checked
+            EXPECT_FALSE(ie);
             EXPECT_TRUE(unit->readTimerControl(enabled, clk));
             EXPECT_TRUE(enabled);
             EXPECT_EQ(clk, e.clock);
@@ -521,14 +510,27 @@ TEST_F(TestRX8130, Timer)
         EXPECT_FALSE(enabled);
         EXPECT_TRUE(unit->readTimerInterrupt(ie));
         EXPECT_FALSE(ie);
-        hold_clock(false);
-        EXPECT_TRUE(unit->writeTimerPause(false));
+    }
+
+    // --- TIE is kept by writeTimer() (not where /IRQ is not allowed: Tab5) ---
+    if (irq_output_allowed()) {
+        SCOPED_TRACE("TIE kept");
+        EXPECT_TRUE(unit->writeTimerInterrupt(true));
+        EXPECT_EQ(unit->writeTimer(1000), 1000U);
+        bool ie{};
+        EXPECT_TRUE(unit->readTimerInterrupt(ie));
+        EXPECT_TRUE(ie);
+        EXPECT_EQ(unit->writeTimer(0), 0U);
+        ie = false;
+        EXPECT_TRUE(unit->readTimerInterrupt(ie));
+        EXPECT_TRUE(ie);
+        EXPECT_TRUE(unit->writeTimerInterrupt(false));
     }
 
     // --- Timer fires (periodic) ---
     {
         SCOPED_TRACE("Periodic");
-        EXPECT_EQ(start_timer(500), 500U);
+        EXPECT_EQ(unit->writeTimer(500), 500U);
         for (int i = 0; i < 3; ++i) {
             EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1000));
             EXPECT_TRUE(unit->clearTimerFlag());
@@ -543,7 +545,7 @@ TEST_F(TestRX8130, Timer)
     // --- The timer repeats (no one-shot mode); update() without callbacks leaves TF ---
     {
         SCOPED_TRACE("Repeats");
-        EXPECT_EQ(start_timer(500), 500U);
+        EXPECT_EQ(unit->writeTimer(500), 500U);
         bool fired{};
         const auto start_at = m5::utility::millis();
         do {
@@ -584,14 +586,19 @@ TEST_F(TestRX8130, Update)
     EXPECT_TRUE(unit->clearUpdateFlag());
     EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readUpdateFlag(f); }, 1500));
     EXPECT_TRUE(unit->clearUpdateFlag());
-    hold_clock(true);
-    EXPECT_TRUE(unit->writeUpdateInterrupt(true));
-    EXPECT_TRUE(unit->readUpdateInterrupt(b));
-    EXPECT_TRUE(b);
+    if (irq_output_allowed()) {
+        EXPECT_TRUE(unit->writeUpdateInterrupt(true));
+        EXPECT_TRUE(unit->readUpdateInterrupt(b));
+        EXPECT_TRUE(b);
+    } else {
+        EXPECT_FALSE(unit->writeUpdateInterrupt(true));  // refused by Tab5BuiltinRTC
+        b = true;
+        EXPECT_TRUE(unit->readUpdateInterrupt(b));
+        EXPECT_FALSE(b);
+    }
     EXPECT_TRUE(unit->writeUpdateInterrupt(false));
     EXPECT_TRUE(unit->readUpdateInterrupt(b));
     EXPECT_FALSE(b);
-    hold_clock(false);
 
     // The update flag is set every second even with UIE=0
     EXPECT_TRUE(unit->clearUpdateFlag());
@@ -715,12 +722,13 @@ TEST_F(TestRX8130, Backup)
 {
     SCOPED_TRACE(ustr);
 
-    // begin() applies the config (default: switchover on, charging off)
-    bool sw{}, chg{true};
+    // begin() applies the config (default: switchover on, charging off; on in Tab5BuiltinRTC)
+    const bool charge{unit->config().charge};
+    bool sw{}, chg{!charge};
     EXPECT_TRUE(unit->readPowerSwitch(sw));
     EXPECT_TRUE(sw);
     EXPECT_TRUE(unit->readBatteryCharge(chg));
-    EXPECT_FALSE(chg);
+    EXPECT_EQ(chg, charge);
 
     // Round-trips; restore the original values at the end
     FullChargeVoltage org_fv{};
@@ -762,9 +770,9 @@ TEST_F(TestRX8130, Backup)
     // Other bits of CONTROL1 are kept
     EXPECT_TRUE(unit->readPowerSwitch(sw));
     EXPECT_TRUE(sw);
-    chg = true;
+    chg = !charge;
     EXPECT_TRUE(unit->readBatteryCharge(chg));
-    EXPECT_FALSE(chg);
+    EXPECT_EQ(chg, charge);
 
     EXPECT_TRUE(unit->writeFullChargeVoltage(org_fv));
     EXPECT_TRUE(unit->writeResetVoltage(org_rv));
@@ -865,15 +873,23 @@ TEST_F(TestRX8130, CompatAPI)
     {
         unit->clearIRQ();
         EXPECT_FALSE(unit->getIRQstatus());
+        bool ie{};
         if (irq_output_allowed()) {
             EXPECT_EQ(unit->setTimerIRQ(500), 500U);
+            EXPECT_TRUE(unit->readTimerInterrupt(ie));
+            EXPECT_TRUE(ie);
         } else {
-            // setTimerIRQ() sets TIE; pause the countdown until TIE is cleared
-            EXPECT_TRUE(unit->writeTimerCountMode(TimerCountMode::Always));
-            EXPECT_TRUE(unit->writeTimerPause(true));
-            EXPECT_EQ(unit->setTimerIRQ(500), 500U);
-            EXPECT_TRUE(unit->writeTimerInterrupt(false));
-            EXPECT_TRUE(unit->writeTimerPause(false));
+            // Tab5BuiltinRTC refuses a periodic timer IRQ, as M5Unified: the timer is stopped and TIE stays 0
+            EXPECT_EQ(unit->setTimerIRQ(500), 0U);
+            EXPECT_EQ(unit->setAlarmIRQ(2), 0);
+            bool enabled{true};
+            TimerClock clk{};
+            EXPECT_TRUE(unit->readTimerControl(enabled, clk));
+            EXPECT_FALSE(enabled);
+            ie = true;
+            EXPECT_TRUE(unit->readTimerInterrupt(ie));
+            EXPECT_FALSE(ie);
+            EXPECT_EQ(unit->writeTimer(500), 500U);  // the flag is checked with the timer alone
         }
         EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1000));
         EXPECT_TRUE(unit->getIRQstatus());
@@ -881,10 +897,13 @@ TEST_F(TestRX8130, CompatAPI)
         EXPECT_FALSE(unit->getIRQstatus());
 
         // The 2 s timer is stopped before it expires
-        hold_clock(true);
-        EXPECT_EQ(unit->setAlarmIRQ(2), 2);
+        if (irq_output_allowed()) {
+            EXPECT_EQ(unit->setAlarmIRQ(2), 2);
+        }
         EXPECT_EQ(unit->setAlarmIRQ(-1), -1);
-        hold_clock(false);
+        ie = true;
+        EXPECT_TRUE(unit->readTimerInterrupt(ie));
+        EXPECT_FALSE(ie);
 
         unit->disableIRQ();
         bool b{true};
@@ -960,7 +979,7 @@ TEST_F(TestRX8130, UpdateClearsHandledFlags)
     unit->config(cfg);
     EXPECT_TRUE(unit->begin());  // config_t is applied by begin()
 
-    EXPECT_EQ(start_timer(500), 500U);  // TIE=0 where /IRQ is not allowed (Tab5)
+    EXPECT_EQ(unit->writeTimer(500), 500U);
     bool fired{};
     EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1500));
     unit->update(true);
@@ -975,7 +994,7 @@ TEST_F(TestRX8130, UpdateClearsHandledFlags)
     cfg.on_timer = []() { *called_ptr = true; };
     unit->config(cfg);
     EXPECT_TRUE(unit->begin());
-    EXPECT_EQ(start_timer(500), 500U);
+    EXPECT_EQ(unit->writeTimer(500), 500U);
     EXPECT_TRUE(wait_flag([this](bool& f) { return unit->readTimerFlag(f); }, 1500));
     unit->update(true);
     EXPECT_TRUE(called);
@@ -998,20 +1017,22 @@ TEST_F(TestRX8130, BeginAppliesConfig)
     SCOPED_TRACE(ustr);
 
     const auto org = unit->config();
-    auto cfg       = org;
-    cfg.fout       = ClockOutput::Hz1;
-    // Not the default (false). Safe on Tab5 (supercapacitor through 1 kOhm);
+    // Tab5BuiltinRTC charges the backup by default (UnitRX8130 does not)
+    EXPECT_EQ(org.charge, !irq_output_allowed());
+    auto cfg = org;
+    cfg.fout = ClockOutput::Hz1;
+    // Not the default. Safe on Tab5 (supercapacitor through 1 kOhm);
     // never run this with true on a board with a primary cell on VBAT (e.g. ToughC5)
-    cfg.charge = true;
+    cfg.charge = !org.charge;
     unit->config(cfg);
     EXPECT_TRUE(unit->begin());
 
     ClockOutput fout{};
-    bool chg{}, sw{};
+    bool chg{!cfg.charge}, sw{};
     EXPECT_TRUE(unit->readClockOutput(fout));
     EXPECT_EQ(fout, ClockOutput::Hz1);
     EXPECT_TRUE(unit->readBatteryCharge(chg));
-    EXPECT_TRUE(chg);
+    EXPECT_EQ(chg, cfg.charge);
     EXPECT_TRUE(unit->readPowerSwitch(sw));
     EXPECT_TRUE(sw);
 

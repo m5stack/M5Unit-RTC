@@ -116,7 +116,7 @@ bool set_alarm_plus1()
     }
 
     // Set alarm (minutes + hours enabled, date/weekday disabled)
-    // writeAlarm clears flag and enables interrupt automatically
+    // writeAlarm clears the alarm flag. The interrupt output is not needed: update() polls the flag
     rtc_time_t at{alarm_hour, alarm_min, -1};
     rtc_date_t ad{2000, 1, -1, -1};
 

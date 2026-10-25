@@ -411,7 +411,7 @@ bool UnitRX8130::clear_vlf()
 
 bool UnitRX8130::stop_timer()
 {
-    return write_register_bits(EXTENSION_REG, EXT_TE, 0) && write_register_bits(CONTROL0_REG, CTRL0_TIE, 0);
+    return write_register_bits(EXTENSION_REG, EXT_TE, 0);
 }
 
 bool UnitRX8130::read_datetime(rx8130::rtc_date_t* date, rx8130::rtc_time_t* time)
@@ -510,11 +510,12 @@ bool UnitRX8130::write_datetime(const rx8130::rtc_date_t* date, const rx8130::rt
 }
 
 bool UnitRX8130::write_alarm(const uint8_t min, const uint8_t hour, const uint8_t day_week, const bool wada,
-                             const bool enable)
+                             const bool has_alarm)
 {
-    // Sequence per datasheet (Figure 49): AIE=0 -> alarm registers -> WADA -> clear AF -> AIE=1,
+    // Sequence per datasheet (Figure 49): AIE=0 -> alarm registers -> WADA -> clear AF -> AIE restored,
     // so a flag raised while the alarm is changed is cleared too
-    if (!write_register_bits(CONTROL0_REG, CTRL0_AIE, 0)) {
+    bool aie{};
+    if (!read_bit(CONTROL0_REG, CTRL0_AIE, aie) || !write_register_bits(CONTROL0_REG, CTRL0_AIE, 0)) {
         return false;
     }
     const uint8_t buf[3] = {min, hour, day_week};
@@ -524,7 +525,7 @@ bool UnitRX8130::write_alarm(const uint8_t min, const uint8_t hour, const uint8_
         return false;
     }
     // All AE=1 would raise the alarm every minute, so the interrupt stays disabled without any field
-    return enable ? write_register_bits(CONTROL0_REG, CTRL0_AIE, CTRL0_AIE) : true;
+    return (aie && has_alarm) ? write_register_bits(CONTROL0_REG, CTRL0_AIE, CTRL0_AIE) : true;
 }
 
 // ============================================================
@@ -600,8 +601,8 @@ bool UnitRX8130::writeAlarm(const rx8130::rtc_time_t& time, const rx8130::rtc_da
         day_week = static_cast<uint8_t>(1U << date.weekDay);
         wada     = false;
     }
-    const bool enable = (time.minutes >= 0 || time.hours >= 0 || date.date >= 0 || date.weekDay >= 0);
-    return write_alarm(min, hour, day_week, wada, enable);
+    const bool has_alarm = (time.minutes >= 0 || time.hours >= 0 || date.date >= 0 || date.weekDay >= 0);
+    return write_alarm(min, hour, day_week, wada, has_alarm);
 }
 
 bool UnitRX8130::writeAlarmWeekdays(const rx8130::rtc_time_t& time, const uint8_t weekdays)
@@ -610,10 +611,10 @@ bool UnitRX8130::writeAlarmWeekdays(const rx8130::rtc_time_t& time, const uint8_
         M5_LIB_LOGE("Invalid alarm %d:%d W:%02X", time.hours, time.minutes, weekdays);
         return false;
     }
-    const uint8_t min  = (time.minutes < 0) ? ALARM_AE : byte2bcd(time.minutes);
-    const uint8_t hour = (time.hours < 0) ? ALARM_AE : byte2bcd(time.hours);
-    const bool enable  = (time.minutes >= 0 || time.hours >= 0 || weekdays);
-    return write_alarm(min, hour, weekdays ? weekdays : ALARM_AE, false, enable);
+    const uint8_t min    = (time.minutes < 0) ? ALARM_AE : byte2bcd(time.minutes);
+    const uint8_t hour   = (time.hours < 0) ? ALARM_AE : byte2bcd(time.hours);
+    const bool has_alarm = (time.minutes >= 0 || time.hours >= 0 || weekdays);
+    return write_alarm(min, hour, weekdays ? weekdays : ALARM_AE, false, has_alarm);
 }
 
 bool UnitRX8130::readAlarm(rx8130::rtc_time_t& time, rx8130::rtc_date_t& date)
@@ -695,12 +696,11 @@ uint32_t UnitRX8130::writeTimer(const uint32_t msec)
         return 0;
     }
 
-    // Sequence per datasheet: TE=0 (+TSEL) -> clear TF -> TIE -> preset -> TE=1 last,
-    // so the first event cannot precede TIE
+    // Sequence per datasheet: TE=0 (+TSEL) -> clear TF -> preset -> TE=1 last.
+    // TIE is kept (setTimerIRQ() sets it before, so the first event cannot precede it)
     const uint8_t tsel     = static_cast<uint8_t>(sel->clock);
     const uint8_t preset[] = {static_cast<uint8_t>(count & 0xFF), static_cast<uint8_t>(count >> 8)};
-    bool ok                = write_register_bits(EXTENSION_REG, EXT_TE | EXT_TSEL, tsel) && clear_flags(FLAG_TF) &&
-              write_register_bits(CONTROL0_REG, CTRL0_TIE, CTRL0_TIE);
+    bool ok                = write_register_bits(EXTENSION_REG, EXT_TE | EXT_TSEL, tsel) && clear_flags(FLAG_TF);
     if (ok) {
         // While TE=0 the counter reads back the preset, so verify the write
         ok = false;
@@ -791,6 +791,10 @@ bool UnitRX8130::readTimerInterrupt(bool& enabled)
 
 bool UnitRX8130::writeTimerInterrupt(const bool enabled)
 {
+    if (enabled && !_periodic_irq) {
+        M5_LIB_LOGW("Timer interrupt is not allowed on this RTC");
+        return false;
+    }
     return write_register_bits(CONTROL0_REG, CTRL0_TIE, enabled ? CTRL0_TIE : 0);
 }
 
@@ -856,6 +860,10 @@ bool UnitRX8130::readUpdateInterrupt(bool& enabled)
 
 bool UnitRX8130::writeUpdateInterrupt(const bool enabled)
 {
+    if (enabled && !_periodic_irq) {
+        M5_LIB_LOGW("Update interrupt is not allowed on this RTC");
+        return false;
+    }
     return write_register_bits(CONTROL0_REG, CTRL0_UIE, enabled ? CTRL0_UIE : 0);
 }
 
@@ -1093,8 +1101,9 @@ int UnitRX8130::setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* ti
             ad.weekDay = date->weekDay;
         }
     }
+    // As M5Unified, the alarm interrupt is enabled too (AF is cleared by writeAlarm() before AIE is set)
     const bool enable = (at.minutes >= 0 || at.hours >= 0 || ad.date >= 0 || ad.weekDay >= 0);
-    return (writeAlarm(at, ad) && enable) ? 1 : 0;
+    return (writeAlarm(at, ad) && writeAlarmInterrupt(enable) && enable) ? 1 : 0;
 }
 
 int UnitRX8130::setAlarmIRQ(const int afterSeconds)
@@ -1110,7 +1119,24 @@ int UnitRX8130::setAlarmIRQ(const int afterSeconds)
 
 uint32_t UnitRX8130::setTimerIRQ(const uint32_t timer_msec)
 {
-    return writeTimer(timer_msec);
+    // As M5Unified on Tab5, a positive period is refused where the periodic interrupts are not allowed
+    if (timer_msec && !_periodic_irq) {
+        M5_LIB_LOGW("Periodic timer IRQ is not allowed on this RTC");
+        writeTimer(0);
+        writeTimerInterrupt(false);
+        return 0;
+    }
+    // As M5Unified, the timer interrupt is enabled too. TIE is set while the timer is stopped,
+    // so the first event cannot precede it (the /IRQ of the timer is a pulse)
+    writeTimer(0);
+    if (!writeTimerInterrupt(true)) {
+        return 0;
+    }
+    const uint32_t actual{writeTimer(timer_msec)};
+    if (!actual) {
+        writeTimerInterrupt(false);
+    }
+    return actual;
 }
 
 bool UnitRX8130::getIRQstatus()

@@ -390,17 +390,13 @@ bool UnitPCF8563::writeAlarm(const pcf8563::rtc_time_t& time, const pcf8563::rtc
         M5_LIB_LOGE("Invalid alarm %d:%d D:%d W:%d", time.hours, time.minutes, date.date, date.weekDay);
         return false;
     }
-    const bool has_alarm{time.minutes >= 0 || time.hours >= 0 || date.date >= 0 || date.weekDay >= 0};
 
-    // Read CONTROL2 once, then batch-modify AF and AIE
+    // Read CONTROL2 once, then clear AF (AIE is kept, TF is written back as read)
     uint8_t ctrl2{};
     if (!read_control2(ctrl2)) {
         return false;
     }
-    ctrl2 &= ~(CTRL2_AF | CTRL2_AIE);  // Clear AF and AIE, TF is written back as read
-    if (has_alarm) {
-        ctrl2 |= CTRL2_AIE;
-    }
+    ctrl2 &= ~CTRL2_AF;
     ctrl2 &= CTRL2_WRITABLE;
 
     uint8_t buf[4]{};
@@ -477,19 +473,19 @@ bool UnitPCF8563::clearAlarmFlag()
 
 uint32_t UnitPCF8563::writeTimer(const uint32_t msec)
 {
-    // Read CONTROL2 once, then batch-modify TF and TIE
+    // Read CONTROL2 once, then clear TF
     uint8_t ctrl2{};
     if (!read_control2(ctrl2)) {
         return 0;
     }
-    // Clear TF, TIE and reserved bits 7-5. AF is written back as read, TI_TP (/INT output mode) is kept
-    ctrl2 &= ~(CTRL2_TF | CTRL2_TIE);
+    // Clear TF and reserved bits 7-5. AF is written back as read, TIE and TI_TP (/INT output mode) are kept
+    ctrl2 &= ~CTRL2_TF;
     ctrl2 &= CTRL2_WRITABLE;
 
     // Round to seconds (without overflow near UINT32_MAX)
     uint32_t afterSeconds{msec / 1000 + ((msec % 1000) >= 500 ? 1U : 0U)};
     if (afterSeconds == 0) {
-        // Disable: write CONTROL2 (TF cleared, AF kept, TIE=0) + disable timer
+        // Disable: write CONTROL2 (TF cleared, AF and TIE kept) + disable timer
         if (!write_register8(CONTROL2_REG, ctrl2) || !writeTimerControl(false, pcf8563::TimerClock::HzPM)) {
             M5_LIB_LOGW("Failed to disable timer");
         }
@@ -511,7 +507,6 @@ uint32_t UnitPCF8563::writeTimer(const uint32_t msec)
         clock = pcf8563::TimerClock::HzPM;
     }
 
-    ctrl2 |= CTRL2_TIE;
     if (!write_register8(CONTROL2_REG, ctrl2)) {
         return 0;
     }
@@ -669,7 +664,9 @@ int UnitPCF8563::setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* t
         }
     }
 
-    return writeAlarm(at, ad) ? (at.minutes >= 0 || at.hours >= 0 || ad.date >= 0 || ad.weekDay >= 0 ? 1 : 0) : 0;
+    // As M5Unified, the alarm interrupt is enabled too (AF is cleared by writeAlarm() before AIE is set)
+    const bool enable{at.minutes >= 0 || at.hours >= 0 || ad.date >= 0 || ad.weekDay >= 0};
+    return (writeAlarm(at, ad) && writeAlarmInterrupt(enable) && enable) ? 1 : 0;
 }
 
 int UnitPCF8563::setAlarmIRQ(const int afterSeconds)
@@ -685,7 +682,17 @@ int UnitPCF8563::setAlarmIRQ(const int afterSeconds)
 
 uint32_t UnitPCF8563::setTimerIRQ(const uint32_t timer_msec)
 {
-    return writeTimer(timer_msec);
+    // As M5Unified, the timer interrupt is enabled too. TIE is set while the timer is stopped,
+    // so the first countdown cannot precede it
+    writeTimer(0);
+    if (!writeTimerInterrupt(true)) {
+        return 0;
+    }
+    const uint32_t actual{writeTimer(timer_msec)};
+    if (!actual) {
+        writeTimerInterrupt(false);
+    }
+    return actual;
 }
 
 void UnitPCF8563::disableIRQ()

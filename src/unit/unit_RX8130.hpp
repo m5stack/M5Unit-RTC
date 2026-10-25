@@ -22,6 +22,7 @@ namespace unit {
   @details The RX8130CE is built into several M5Stack controllers (Tab5, StampPLC, PaperColor, etc.)
   on the internal I2C bus. Add it with the internal bus, e.g. `Units.add(rtc, M5.In_I2C)`, and set
   `internal_rtc = false` in M5.config() so that M5.Rtc does not use the same chip.
+  For the Tab5 use Tab5BuiltinRTC (see the IRQ notes).
   @note The year range is 2000-2099 (the chip has no century bit)
  */
 class UnitRX8130 : public Component {
@@ -54,6 +55,7 @@ public:
           Charging a primary cell can make it leak or burst
           @note Built-in RX8130CE of M5Stack boards (from the published schematics):
           - Tab5, StampPLC: supercapacitor / rechargeable cell through 1 kOhm, set true to keep the backup charged
+            (true by default in Tab5BuiltinRTC)
           - ToughC5: CR2032 primary cell directly on VBAT, keep false
           - StopWatch, PaperColor, PaperMono: no backup cell, no effect
           @note The default is false (the power-on state of the chip). begin() always writes CHGEN, so false also
@@ -194,24 +196,40 @@ public:
       @note update() clears only the flags that have a callback; the others are left for the read functions.
       In the hardware interrupt mode a flag with its interrupt enabled is cleared too
       (AF holds /IRQ low, and no further interrupt would arrive).
+
+      @note writeAlarm(), writeAlarmWeekdays() and writeTimer() do not change the interrupt enable bits
+      (AIE / TIE). The flags are set either way, so the polling mode needs no enable bit.
+      To drive /IRQ (the hardware interrupt mode, or a wakeup through the board), enable it with
+      writeAlarmInterrupt() / writeTimerInterrupt() / writeUpdateInterrupt().
+      The M5Unified compatible setAlarmIRQ() / setTimerIRQ() enable it, as M5Unified does.
+
+      @warning M5Stack Tab5: the /IRQ of the built-in RX8130CE drives the power management MCU (E_TRG).
+      A short-period timer interrupt left enabled (TIE=1) can make the Tab5 unbootable: every power-on
+      is cut before setup() runs, and the RX8130CE keeps running on the backup cell, so removing USB and
+      the battery does not clear it. Do not enable the timer (TIE) or the update (UIE) interrupt on Tab5:
+      use Tab5BuiltinRTC, which refuses them (setTimerIRQ() with a positive period too, as M5Unified).
+      An alarm interrupt (AIE=1) holds /IRQ low until AF is cleared: it turns the Tab5 on while it is off
+      (the wakeup used by M5Unified timerSleep(time)), but can turn it off while it is running.
      */
     ///@name Alarm
     ///@{
     /*!
-      @brief Set alarm and enable interrupt
+      @brief Set alarm
       @param time Alarm time (minutes, hours). Negative fields are disabled.
       @param date Alarm date (date or weekDay). Negative fields are disabled.
       @return True if successful
       @note If both date and weekDay are set, date is used (the chip compares either day or week)
-      @note Clears alarm flag, writes alarm registers, and enables alarm interrupt
-            if any field is non-negative. Disables alarm interrupt if all fields are negative.
+      @note Writes the alarm registers and clears the alarm flag. The alarm interrupt (AIE) is kept,
+            except that it is disabled if all fields are negative (the chip would raise the alarm every minute).
+            Enable it with writeAlarmInterrupt() to drive /IRQ
      */
     bool writeAlarm(const rx8130::rtc_time_t& time, const rx8130::rtc_date_t& date);
     /*!
-      @brief Set weekly alarm on multiple weekdays and enable interrupt
+      @brief Set weekly alarm on multiple weekdays
       @param time Alarm time (minutes, hours). Negative fields are disabled.
       @param weekdays Weekday bits (bit0:Sun ... bit6:Sat). 0 disables the weekday comparison
       @return True if successful
+      @note The alarm interrupt (AIE) is handled as writeAlarm()
      */
     bool writeAlarmWeekdays(const rx8130::rtc_time_t& time, const uint8_t weekdays);
     /*!
@@ -238,6 +256,7 @@ public:
       @brief Write alarm interrupt enable state
       @param enabled True to enable alarm interrupt (AIE bit)
       @return True if successful
+      @warning M5Stack Tab5 turns off when the alarm fires while running (see the IRQ notes of this class)
      */
     bool writeAlarmInterrupt(const bool enabled);
     /*!
@@ -261,7 +280,8 @@ public:
       @return Actual period in milliseconds (0 if disabled or failed)
       @note The timer repeats: the RX8130 reloads the preset every period and sets TF each time
             (it has no one-shot mode). Stop it with writeTimer(0), e.g. in the on_timer callback.
-      @note Selects the source clock automatically. Clears timer flag, enables timer and timer interrupt.
+      @note Selects the source clock automatically. Clears the timer flag and starts the timer.
+            The timer interrupt (TIE) is kept; enable it with writeTimerInterrupt() to drive /IRQ
      */
     uint32_t writeTimer(const uint32_t msec);
     /*!
@@ -302,6 +322,10 @@ public:
       @brief Write timer interrupt enable state
       @param enabled True to enable timer interrupt (TIE bit)
       @return True if successful
+      @note Enable it before writeTimer() starts the timer, so that the first event cannot precede it
+            (the /IRQ of the timer is a pulse)
+      @warning Do not enable it on M5Stack Tab5 (see the IRQ notes of this class)
+      @note Tab5BuiltinRTC refuses true (returns false)
      */
     bool writeTimerInterrupt(const bool enabled);
     /*!
@@ -368,6 +392,8 @@ public:
       @param enabled True to enable update interrupt (UIE bit)
       @return True if successful
       @note The /IRQ output is released automatically after about 7.57 ms
+      @warning Do not enable it on M5Stack Tab5 (see the IRQ notes of this class)
+      @note Tab5BuiltinRTC refuses true (returns false)
      */
     bool writeUpdateInterrupt(const bool enabled);
     /*!
@@ -702,6 +728,8 @@ public:
       @param date Date (can be nullptr). Negative fields are ignored. date takes precedence over weekDay
       @param time Time (can be nullptr). Negative fields are ignored.
       @return 1 if enabled, 0 if disabled or on failure
+      @note As M5Unified, the alarm interrupt (AIE) is enabled too (disabled if all fields are negative)
+      @warning M5Stack Tab5 turns off when the alarm fires while running (see the IRQ notes of this class)
      */
     int setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* time);
     //! @brief Set alarm by date and time (reference)
@@ -719,6 +747,7 @@ public:
       @param afterSeconds Timer period in seconds (negative to disable), limited to UINT32_MAX / 1000
       @return Actual seconds set, -1 if disabled by a negative value, 0 if disabled by 0 or on failure
       @note The timer repeats; see writeTimer()
+      @note As M5Unified, the timer interrupt (TIE) is enabled too; see setTimerIRQ()
      */
     int setAlarmIRQ(const int afterSeconds);
     /*!
@@ -726,6 +755,8 @@ public:
       @param timer_msec Timer period in milliseconds (0 to disable)
       @return Actual milliseconds set (0 if disabled or on failure)
       @note The timer repeats; see writeTimer()
+      @note As M5Unified, the timer interrupt (TIE) is enabled too, before the timer starts (disabled by 0)
+      @note Tab5BuiltinRTC refuses a positive period, as M5Unified on Tab5: the timer is stopped and 0 is returned
      */
     uint32_t setTimerIRQ(const uint32_t timer_msec);
 
@@ -769,10 +800,14 @@ protected:
     bool clear_flags(const uint8_t bits);
     // Clear VLF, retrying until the oscillation starts
     bool clear_vlf();
-    // Stop the wakeup timer (TE=0, TIE=0)
+    // Stop the wakeup timer (TE=0, TIE is kept)
     bool stop_timer();
-    // Write alarm registers and WADA, then AIE
-    bool write_alarm(const uint8_t min, const uint8_t hour, const uint8_t day_week, const bool wada, const bool enable);
+    // Write alarm registers and WADA with AIE=0, then restore AIE (kept 0 without has_alarm)
+    bool write_alarm(const uint8_t min, const uint8_t hour, const uint8_t day_week, const bool wada,
+                     const bool has_alarm);
+
+    // false: the timer and update interrupts are refused (Tab5BuiltinRTC)
+    bool _periodic_irq{true};
 
 private:
     static void IRAM_ATTR isr_handler(void* arg);
