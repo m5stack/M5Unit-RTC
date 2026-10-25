@@ -13,6 +13,8 @@
 #include <googletest/test_template.hpp>
 #include <googletest/test_helper.hpp>
 #include <unit/unit_PCF8563.hpp>
+#include <type_traits>
+#include <utility>
 
 using namespace m5::unit::googletest;
 using namespace m5::unit;
@@ -1231,4 +1233,37 @@ TEST_F(TestPCF8563, BeginKeepsFlags)
 
     EXPECT_TRUE(unit->clearAlarmFlag());
     EXPECT_TRUE(unit->clearTimerFlag());
+}
+
+// ============================================================
+// The unit is movable (its own move, which also moves the ISR handler of begin())
+// ============================================================
+
+static_assert(std::is_nothrow_move_constructible<UnitPCF8563>::value, "UnitPCF8563 must be movable");
+static_assert(std::is_nothrow_move_assignable<UnitPCF8563>::value, "UnitPCF8563 must be move assignable");
+
+TEST(UnitPCF8563Move, KeepsConfig)
+{
+    UnitPCF8563 a;
+    auto cfg             = a.config();
+    cfg.polling_interval = 1234;
+    cfg.clkout           = ClockOutput::Hz1;
+    a.config(cfg);
+
+    UnitPCF8563 b{std::move(a)};
+    EXPECT_EQ(b.config().polling_interval, 1234U);
+    EXPECT_EQ(b.config().clkout, ClockOutput::Hz1);
+    // The config of the moved-from unit is copied, not cleared
+    EXPECT_EQ(a.config().polling_interval, 1234U);
+
+    UnitPCF8563 c;
+    c = std::move(b);
+    EXPECT_EQ(c.config().polling_interval, 1234U);
+    EXPECT_EQ(c.config().clkout, ClockOutput::Hz1);
+
+    // Self move assignment keeps the unit (through a reference to avoid -Wself-move)
+    auto& alias = c;
+    c           = std::move(alias);
+    EXPECT_EQ(c.config().polling_interval, 1234U);
+    EXPECT_EQ(c.config().clkout, ClockOutput::Hz1);
 }

@@ -21,6 +21,7 @@
 #include <M5Utility.hpp>
 #include <driver/gpio.h>
 #include <algorithm>
+#include <utility>
 #if __has_include(<sys/time.h>)
 #include <sys/time.h>
 #endif
@@ -80,9 +81,53 @@ UnitPCF8563::~UnitPCF8563()
     remove_isr();
 }
 
+UnitPCF8563::UnitPCF8563(UnitPCF8563&& other) noexcept
+    : Component(std::move(other)), _cfg{other._cfg}, _isr_fired{other._isr_fired}, _isr_pin{other._isr_pin}
+{
+    // other no longer owns the handler, so its destructor does not remove it
+    other._isr_pin = -1;
+    rebind_isr();
+    // An interrupt that came before the rebind set the flag of other
+    if (other._isr_fired) {
+        _isr_fired = true;
+    }
+    other._isr_fired = false;  // the ISR no longer writes to other
+}
+
+UnitPCF8563& UnitPCF8563::operator=(UnitPCF8563&& other) noexcept
+{
+    if (this != &other) {
+        remove_isr();
+        Component::operator=(std::move(other));
+        _cfg               = other._cfg;
+        _isr_fired         = other._isr_fired;
+        _isr_pin           = other._isr_pin;
+        other._isr_pin     = -1;
+        rebind_isr();
+        // An interrupt that came before the rebind set the flag of other
+        if (other._isr_fired) {
+            _isr_fired = true;
+        }
+        other._isr_fired = false;  // the ISR no longer writes to other
+    }
+    return *this;
+}
+
 void UnitPCF8563::remove_isr()
 {
     if (_isr_pin >= 0) {
+        gpio_isr_handler_remove(static_cast<gpio_num_t>(_isr_pin));
+        _isr_pin = -1;
+    }
+}
+
+void UnitPCF8563::rebind_isr()
+{
+    // gpio_isr_handler_add() replaces the handler and its argument of the pin under a spinlock.
+    // The flag set on the moved-from unit before that is merged by the caller
+    if (_isr_pin >= 0 && gpio_isr_handler_add(static_cast<gpio_num_t>(_isr_pin), isr_handler, this) != ESP_OK) {
+        M5_LIB_LOGE("Failed to move the ISR handler on pin %d", _isr_pin);
+        // Do not leave the handler pointing at the moved-from unit
         gpio_isr_handler_remove(static_cast<gpio_num_t>(_isr_pin));
         _isr_pin = -1;
     }

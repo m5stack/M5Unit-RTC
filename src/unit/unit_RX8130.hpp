@@ -26,7 +26,8 @@ namespace unit {
   @note The year range is 2000-2099 (the chip has no century bit)
  */
 class UnitRX8130 : public Component {
-    M5_UNIT_COMPONENT_HPP_BUILDER(UnitRX8130, 0x32);
+    // Own move: the ISR handler added by begin() takes the address of the unit
+    M5_UNIT_COMPONENT_HPP_BUILDER_WITHOUT_MOVE(UnitRX8130, 0x32);
 
 public:
     //! @brief IRQ callback type
@@ -86,6 +87,23 @@ public:
     }
     //! @brief Destructor (removes the ISR handler added by begin())
     virtual ~UnitRX8130();
+    /*!
+      @brief Move constructor
+      @param other Unit to move from
+      @note The ISR handler added by begin() (hardware interrupt mode) is moved to this unit.
+            If it cannot be moved, the hardware interrupt is disabled (an error is logged)
+      @note Do not move a unit after UnitUnified::add() or after adding it to a hub: they keep its address
+     */
+    UnitRX8130(UnitRX8130&& other) noexcept;
+    /*!
+      @brief Move assignment
+      @param other Unit to move from
+      @return This unit
+      @note The ISR handler of this unit is removed, and the one of other is moved to this unit
+            (as the move constructor)
+      @note Do not move a unit after UnitUnified::add() or after adding it to a hub: they keep its address
+     */
+    UnitRX8130& operator=(UnitRX8130&& other) noexcept;
 
     /*!
       @brief Initialize the unit with config()
@@ -814,6 +832,8 @@ private:
     static void IRAM_ATTR isr_handler(void* arg);
     void check_irq_flags();
     void remove_isr();
+    // Point the ISR handler of _isr_pin at this unit (after a move)
+    void rebind_isr();
 
     config_t _cfg{};
     volatile bool _isr_fired{};

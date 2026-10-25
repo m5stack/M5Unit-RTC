@@ -13,6 +13,8 @@
 #include <googletest/test_template.hpp>
 #include <googletest/test_helper.hpp>
 #include <M5UnitUnifiedRTC.hpp>
+#include <type_traits>
+#include <utility>
 #include <sys/time.h>
 #include <cstring>
 
@@ -1050,4 +1052,45 @@ TEST_F(TestRX8130, BeginAppliesConfig)
     chg = !org.charge;
     EXPECT_TRUE(unit->readBatteryCharge(chg));
     EXPECT_EQ(chg, org.charge);
+}
+
+// ============================================================
+// The units are movable (their own move, which also moves the ISR handler of begin())
+// ============================================================
+
+static_assert(std::is_nothrow_move_constructible<UnitRX8130>::value, "UnitRX8130 must be movable");
+static_assert(std::is_nothrow_move_assignable<UnitRX8130>::value, "UnitRX8130 must be move assignable");
+static_assert(std::is_nothrow_move_constructible<Tab5BuiltinRTC>::value, "Tab5BuiltinRTC must be movable");
+static_assert(std::is_nothrow_move_assignable<Tab5BuiltinRTC>::value, "Tab5BuiltinRTC must be move assignable");
+
+TEST(UnitRX8130Move, KeepsConfig)
+{
+    UnitRX8130 a;
+    auto cfg             = a.config();
+    cfg.polling_interval = 1234;
+    cfg.fout             = ClockOutput::Hz1;
+    a.config(cfg);
+
+    UnitRX8130 b{std::move(a)};
+    EXPECT_EQ(b.config().polling_interval, 1234U);
+    EXPECT_EQ(b.config().fout, ClockOutput::Hz1);
+    // The config of the moved-from unit is copied, not cleared
+    EXPECT_EQ(a.config().polling_interval, 1234U);
+
+    UnitRX8130 c;
+    c = std::move(b);
+    EXPECT_EQ(c.config().polling_interval, 1234U);
+    EXPECT_EQ(c.config().fout, ClockOutput::Hz1);
+
+    // Self move assignment keeps the unit (through a reference to avoid -Wself-move)
+    auto& alias = c;
+    c           = std::move(alias);
+    EXPECT_EQ(c.config().polling_interval, 1234U);
+    EXPECT_EQ(c.config().fout, ClockOutput::Hz1);
+
+    // Tab5BuiltinRTC keeps its defaults (charge) and its refusal of the periodic interrupts through a move
+    Tab5BuiltinRTC t;
+    Tab5BuiltinRTC u{std::move(t)};
+    EXPECT_TRUE(u.config().charge);
+    EXPECT_FALSE(u.writeTimerInterrupt(true));  // refused before any I2C access
 }

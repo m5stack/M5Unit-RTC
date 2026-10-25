@@ -21,7 +21,8 @@ namespace unit {
   @brief Real-time clock unit using PCF8563 compatible chip (BM8563/HYM8563)
  */
 class UnitPCF8563 : public Component {
-    M5_UNIT_COMPONENT_HPP_BUILDER(UnitPCF8563, 0x51);
+    // Own move: the ISR handler added by begin() takes the address of the unit
+    M5_UNIT_COMPONENT_HPP_BUILDER_WITHOUT_MOVE(UnitPCF8563, 0x51);
 
 public:
     //! @brief IRQ callback type
@@ -61,6 +62,23 @@ public:
     }
     //! @brief Destructor (removes the ISR handler added by begin())
     virtual ~UnitPCF8563();
+    /*!
+      @brief Move constructor
+      @param other Unit to move from
+      @note The ISR handler added by begin() (hardware interrupt mode) is moved to this unit.
+            If it cannot be moved, the hardware interrupt is disabled (an error is logged)
+      @note Do not move a unit after UnitUnified::add() or after adding it to a hub: they keep its address
+     */
+    UnitPCF8563(UnitPCF8563&& other) noexcept;
+    /*!
+      @brief Move assignment
+      @param other Unit to move from
+      @return This unit
+      @note The ISR handler of this unit is removed, and the one of other is moved to this unit
+            (as the move constructor)
+      @note Do not move a unit after UnitUnified::add() or after adding it to a hub: they keep its address
+     */
+    UnitPCF8563& operator=(UnitPCF8563&& other) noexcept;
 
     /*!
       @brief Initialize the unit with config()
@@ -564,6 +582,8 @@ private:
     static void IRAM_ATTR isr_handler(void* arg);
     void check_irq_flags();
     void remove_isr();
+    // Point the ISR handler of _isr_pin at this unit (after a move)
+    void rebind_isr();
 
     config_t _cfg{};
     volatile bool _isr_fired{};
