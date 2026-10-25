@@ -198,7 +198,8 @@ public:
       (AF holds /IRQ low, and no further interrupt would arrive).
 
       @note writeAlarm(), writeAlarmWeekdays() and writeTimer() do not change the interrupt enable bits
-      (AIE / TIE). The flags are set either way, so the polling mode needs no enable bit.
+      (AIE / TIE), except that an alarm without any field disables AIE (see writeAlarm()).
+      The flags are set either way, so the polling mode needs no enable bit.
       To drive /IRQ (the hardware interrupt mode, or a wakeup through the board), enable it with
       writeAlarmInterrupt() / writeTimerInterrupt() / writeUpdateInterrupt().
       The M5Unified compatible setAlarmIRQ() / setTimerIRQ() enable it, as M5Unified does.
@@ -207,7 +208,7 @@ public:
       A short-period timer interrupt left enabled (TIE=1) can make the Tab5 unbootable: every power-on
       is cut before setup() runs, and the RX8130CE keeps running on the backup cell, so removing USB and
       the battery does not clear it. Do not enable the timer (TIE) or the update (UIE) interrupt on Tab5:
-      use Tab5BuiltinRTC, which refuses them (setTimerIRQ() with a positive period too, as M5Unified).
+      use Tab5BuiltinRTC, which refuses them (setTimerIRQ() with a positive period too, as M5Unified does).
       An alarm interrupt (AIE=1) holds /IRQ low until AF is cleared: it turns the Tab5 on while it is off
       (the wakeup used by M5Unified timerSleep(time)), but can turn it off while it is running.
      */
