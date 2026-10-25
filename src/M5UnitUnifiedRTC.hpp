@@ -32,13 +32,18 @@ using UnitRX8130CE = m5::unit::UnitRX8130;   //!< @brief Alias of UnitRX8130 for
   @brief M5Stack Tab5 built-in RTC (RX8130CE on the internal I2C bus)
   @details UnitRX8130 subclass for the Tab5. The /IRQ of the chip drives the power management MCU of the Tab5,
   so the periodic interrupts, which can make the Tab5 unbootable, are refused (see the IRQ notes of UnitRX8130):
-  - writeTimerInterrupt(true) / writeUpdateInterrupt(true) return false
-  - setTimerIRQ() / setAlarmIRQ(afterSeconds) with a positive period stop the timer and return 0, as M5Unified
+  - writeTimerInterrupt(true) / writeUpdateInterrupt(true) return false.
+  - setTimerIRQ() / setAlarmIRQ(afterSeconds) with a positive period stop the timer and return 0, as M5Unified does.
+
   The alarm interrupt is allowed: it turns the Tab5 on while it is off (the wakeup of M5Unified timerSleep(time)).
   config_t::charge is true by default (the backup is a supercapacitor through 1 kOhm).
  */
 class Tab5BuiltinRTC : public UnitRX8130 {
 public:
+    /*!
+      @brief Constructor
+      @param addr I2C address
+     */
     explicit Tab5BuiltinRTC(const uint8_t addr = DEFAULT_ADDRESS) : UnitRX8130(addr)
     {
         _periodic_irq = false;
