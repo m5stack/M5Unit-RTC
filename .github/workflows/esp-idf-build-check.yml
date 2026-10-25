@@ -128,16 +128,17 @@ jobs:
           target: ${{ matrix.target }}
           path: examples/UnitUnified/UnitRTC/NTPSync
 
-  # NTPSync with the built-in RX8130CE of Tab5: the Kconfig option only exists on esp32p4, and the Tab5 Wi-Fi
-  # (esp_hosted) needs IDF 5.3+.
+  # The examples with the built-in RX8130CE of Tab5: the Kconfig option only exists on esp32p4, and the Tab5 Wi-Fi
+  # of NTPSync (esp_hosted) needs IDF 5.3+.
   build-tab5:
-    name: ${{ matrix.idf }} esp32p4 UnitRTC NTPSync (Tab5 built-in RX8130)
+    name: ${{ matrix.idf }} esp32p4 UnitRTC ${{ matrix.example }} (Tab5 built-in RX8130)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 20
       matrix:
+        example: [NTPSync, AlarmNotify, PeriodicTimer]
         idf: [v5.5.4, v6.1]
     steps:
       - name: Checkout
@@ -153,4 +154,4 @@ jobs:
         with:
           esp_idf_version: ${{ matrix.idf }}
           target: esp32p4
-          path: examples/UnitUnified/UnitRTC/NTPSync
+          path: examples/UnitUnified/UnitRTC/${{ matrix.example }}

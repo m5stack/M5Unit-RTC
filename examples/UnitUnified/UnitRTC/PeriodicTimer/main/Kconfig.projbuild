@@ -1,0 +1,2 @@
+# The "Target RTC" choice for this example.
+rsource "../../../common/Kconfig.variant"

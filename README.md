@@ -53,15 +53,17 @@ See also [examples/UnitUnified](examples/UnitUnified)
 
 - [UnitRTC/NTPSync](examples/UnitUnified/UnitRTC/NTPSync): Gets the time from NTP over Wi-Fi and sets the RTC.
   It can also use the built-in RX8130CE of Tab5 (see below)
-- [UnitRTC/AlarmNotify](examples/UnitUnified/UnitRTC/AlarmNotify): Sets an alarm one minute ahead and notifies when it fires
-- [UnitRTC/PeriodicTimer](examples/UnitUnified/UnitRTC/PeriodicTimer): Fires the countdown timer periodically
+- [UnitRTC/AlarmNotify](examples/UnitUnified/UnitRTC/AlarmNotify): Sets an alarm one minute ahead and notifies when it fires.
+  It can also use the built-in RX8130CE of Tab5
+- [UnitRTC/PeriodicTimer](examples/UnitUnified/UnitRTC/PeriodicTimer): Fires the countdown timer periodically.
+  It can also use the built-in RX8130CE of Tab5
 - [UnitRTC/ViaPaHub](examples/UnitUnified/UnitRTC/ViaPaHub): Reads the date and time through PaHub (ch:0).
   Requires [M5Unit-HUB](https://github.com/m5stack/M5Unit-HUB).
 
 ### For ArduinoIDE settings
 
-NTPSync works with Unit RTC by default. To use the built-in RX8130CE of Tab5, choose the define symbol in
-`examples/UnitUnified/UnitRTC/NTPSync/main/NTPSync.cpp`.
+NTPSync / AlarmNotify / PeriodicTimer work with Unit RTC by default. To use the built-in RX8130CE of Tab5, choose the
+define symbol in the source of the example (e.g. `examples/UnitUnified/UnitRTC/NTPSync/main/NTPSync.cpp`).
 
 ```cpp
 // *************************************************************
@@ -80,17 +82,18 @@ NTPSync takes the Wi-Fi credentials from `EXAMPLE_SSID` / `EXAMPLE_PASSWORD`. Fi
 (`-DEXAMPLE_SSID="\"YOUR_SSID\"" -DEXAMPLE_PASSWORD="\"PASSWORD\""`).
 With an empty SSID, the config stored in NVS by an earlier connection is used.
 
-AlarmNotify / PeriodicTimer are for Unit RTC. They poll the flags with update() and do not enable the interrupt output.
+AlarmNotify / PeriodicTimer poll the flags with update() and do not enable the interrupt output, so they can run with
+the built-in RX8130CE of Tab5 (`BUILTIN_UNIT_RX8130`, which uses `Tab5BuiltinRTC`).
 
 ### For ESP-IDF settings
 
 > **NOTE:** The ESP-IDF native build (`idf.py`) targets ESP-IDF **5.1 or later** (5.x and 6.x).
 > The legacy library (`Unit_RTC.h`) is for Arduino only and is not built under ESP-IDF.
 
-On ESP-IDF native builds (`idf.py`), the RTC of NTPSync is selected via Kconfig instead of editing the source `#define`:
-`idf.py menuconfig` → **M5Unit-RTC NTPSync example** → **Target RTC**. The **M5Tab5 built-in RX8130CE** option appears
-only when the target is esp32p4. The Wi-Fi credentials are set in **NTPSync settings**.
-The other examples need no Kconfig choice. Build them directly:
+On ESP-IDF native builds (`idf.py`), the RTC of NTPSync / AlarmNotify / PeriodicTimer is selected via Kconfig instead
+of editing the source `#define`: `idf.py menuconfig` → **M5Unit-RTC example** → **Target RTC**.
+The **M5Tab5 built-in RX8130CE** option appears only when the target is esp32p4.
+The Wi-Fi credentials of NTPSync are set in **NTPSync settings**. ViaPaHub needs no Kconfig choice. Build them directly:
 
 ```sh
 cd examples/UnitUnified/UnitRTC/PeriodicTimer

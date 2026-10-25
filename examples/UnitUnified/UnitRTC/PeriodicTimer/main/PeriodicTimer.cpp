@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: MIT
  */
 /*
-  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
+  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563) or the built-in RX8130CE of Tab5
   - Periodic countdown timer using writeTimer() convenience API (it repeats until writeTimer(0) stops it)
-  - The first period is 1 to 2 seconds shorter than the interval, the later ones are exact (see writeTimer())
+  - The timer flag is polled by update(); the interrupt output of the RTC is not used
+  - With Unit RTC the first period is 1 to 2 seconds shorter than the interval, the later ones are exact
+    (see UnitPCF8563::writeTimer())
   - BtnA click: cycle the interval
     5s -> 10s -> 30s -> stop -> ...
 */
@@ -14,6 +16,16 @@
 #include <M5UnitUnified.h>
 #include <M5UnitUnifiedRTC.h>
 #include <wiring/m5_unit_unified_wiring.hpp>
+
+// *************************************************************
+// Choose one define symbol to match the RTC you are using
+// *************************************************************
+#if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
+// For Unit RTC (U126)
+#define USING_UNIT_RTC
+// For Tab5 (C145) built-in RX8130CE (internal I2C)
+// #define BUILTIN_UNIT_RX8130
+#endif
 #include <sys/time.h>
 #include <algorithm>
 #include <cstdint>
@@ -39,7 +51,18 @@ constexpr int32_t CANVAS_WIDTH{20 * 6};
 constexpr int32_t CANVAS_HEIGHT{8 * 8};
 float canvas_zoom{1.0f};
 m5::unit::UnitUnified Units;
+#if defined(USING_UNIT_RTC)
+#pragma message("Using Unit RTC")
 m5::unit::UnitRTC unit;
+#elif defined(BUILTIN_UNIT_RX8130)
+#pragma message("Using the built-in RX8130 (Tab5)")
+#if !defined(CONFIG_IDF_TARGET_ESP32P4)
+#error "BUILTIN_UNIT_RX8130 is for Tab5 (ESP32-P4)"
+#endif
+m5::unit::Tab5BuiltinRTC unit;  // charges the backup supercapacitor (BT1) by default
+#else
+#error "Choose the RTC"
+#endif
 
 volatile uint32_t timer_count{};
 volatile bool timer_fired{};
@@ -108,8 +131,17 @@ void setup()
     cfg.on_timer = on_timer;
     unit.config(cfg);
 
+#if defined(BUILTIN_UNIT_RX8130)
+    // The built-in RX8130CE is on the internal I2C bus
+    if (M5.getBoard() != m5::board_t::board_M5Tab5) {
+        M5_LOGE("The board is not Tab5");
+        m5::unit::wiring::failStop();
+    }
+    bool unit_ready = Units.add(unit, M5.In_I2C) && Units.begin();
+#else
     // Board-aware connection: NessoN1 -> SoftwareI2C on the GROVE port, NanoC6/NanoH2 -> M5.Ex_I2C, others -> Wire
     bool unit_ready = m5::unit::wiring::addI2C(Units, unit) && Units.begin();
+#endif
     if (!unit_ready) {
         M5_LOGE("Failed to begin");
         m5::unit::wiring::failStop();
@@ -117,8 +149,9 @@ void setup()
     M5_LOGI("M5UnitUnified initialized");
     M5_LOGI("%s", Units.debugInfo().c_str());
 
-    // Check voltage low (battery backup lost)
-    if (unit.getVoltLow()) {
+    // Check whether the time data were lost (backup voltage low / oscillation stop)
+    bool volt_low{};
+    if (unit.readVoltLow(volt_low) && volt_low) {
         M5_LOGW("RTC voltage low - time may be invalid");
     }
 

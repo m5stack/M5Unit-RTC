@@ -1,13 +1,13 @@
-# "Target RTC" selection for the NTPSync example (ESP-IDF).
-# rsource'd from UnitRTC/NTPSync/main/Kconfig.projbuild. The chosen CONFIG_EXAMPLE_* is mapped to the
+# "Target RTC" selection for the UnitRTC examples (ESP-IDF: NTPSync / AlarmNotify / PeriodicTimer).
+# rsource'd from each example's main/Kconfig.projbuild. The chosen CONFIG_EXAMPLE_* is mapped to the
 # source-level macro in common/variant.cmake (shared with the Arduino build).
-menu "M5Unit-RTC NTPSync example"
+menu "M5Unit-RTC example"
 
-choice EXAMPLE_NTPSYNC_VARIANT
+choice EXAMPLE_RTC_VARIANT
     prompt "Target RTC"
     default EXAMPLE_USING_UNIT_RTC
     help
-        Which RTC this example sets from NTP.
+        Which RTC this example uses.
 
     config EXAMPLE_USING_UNIT_RTC
         bool "Unit RTC (U126, I2C / GROVE)"

@@ -113,7 +113,7 @@ jobs:
         archi:
           - esp32
 
-        # The RTC variant of NTPSync (the other sketches ignore it). Unit RTC by default
+        # The RTC variant of NTPSync / AlarmNotify / PeriodicTimer (ViaPaHub ignores it). Unit RTC by default
         build-properties:
           - "-DUSING_UNIT_RTC"
 
@@ -137,9 +137,25 @@ jobs:
             archi: esp32
             platform-version: 3.3.10
             board: m5stack_core
-          # NTPSync with the built-in RX8130CE of Tab5
+          # NTPSync / AlarmNotify / PeriodicTimer with the built-in RX8130CE of Tab5
           - unit: UnitRTC
             sketch: NTPSync
+            platform-url: https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
+            platform: m5stack
+            archi: esp32
+            platform-version: 3.3.10
+            board: m5stack_tab5
+            build-properties: "-DBUILTIN_UNIT_RX8130"
+          - unit: UnitRTC
+            sketch: AlarmNotify
+            platform-url: https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
+            platform: m5stack
+            archi: esp32
+            platform-version: 3.3.10
+            board: m5stack_tab5
+            build-properties: "-DBUILTIN_UNIT_RX8130"
+          - unit: UnitRTC
+            sketch: PeriodicTimer
             platform-url: https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
             platform: m5stack
             archi: esp32
