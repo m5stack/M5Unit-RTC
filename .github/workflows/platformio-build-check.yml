@@ -8,30 +8,32 @@ on:
     branches:
       - '*'
     paths:
-      - 'src/unit/**.cpp'
-      - 'src/unit/**.hpp'
-      - 'src/unit/**.h'
-      - 'src/unit/**.c'
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
       - 'examples/UnitUnified/**.ino'
       - 'examples/UnitUnified/**.cpp'
       - 'examples/UnitUnified/**.hpp'
       - 'examples/UnitUnified/**.h'
       - 'examples/UnitUnified/**.c'
-      - '**/platformio-build-check.yml'
-      - '**platformio.ini'
+      - '.github/workflows/platformio-build-check.yml'
+      - 'platformio.ini'
+      - 'boards/**'
   pull_request:
     paths:
-      - 'src/unit/**.cpp'
-      - 'src/unit/**.hpp'
-      - 'src/unit/**.h'
-      - 'src/unit/**.c'
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
       - 'examples/UnitUnified/**.ino'
       - 'examples/UnitUnified/**.cpp'
       - 'examples/UnitUnified/**.hpp'
       - 'examples/UnitUnified/**.h'
       - 'examples/UnitUnified/**.c'
-      - '**/platformio-build-check.yml'
-      - '**platformio.ini'
+      - '.github/workflows/platformio-build-check.yml'
+      - 'platformio.ini'
+      - 'boards/**'
   workflow_dispatch:
 
 defaults:
@@ -44,37 +46,45 @@ concurrency:
 
 jobs:
   build:
-    name: UnitRTC:${{ matrix.example }}@${{ matrix.board }}:${{ matrix.framework }}:${{ matrix.espressif32 }}
+    name: ${{ matrix.unit }}:${{ matrix.example }}@${{ matrix.board }}:${{ matrix.framework }}:${{ matrix.espressif32 }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
 
     strategy:
       fail-fast: false
       max-parallel: 20
-
+      
       matrix:
+        unit:
+          - UnitRTC
+
         example:
           - NTPSync
+          # The hub example goes through UnitPaHub (M5Unit-HUB), so it is built on every representative board
+          - ViaPaHub
 
         board:
+          # Reduced from 19 to 5 boards: one per compile config (chip arch x platform).
+          # The other boards differ only in the variant header, so the library code compiles the same.
           - Core
-          - Core2
+#          - Core2  # ESP32: represented by Core
           - CoreS3
-          - Fire
-          - StampS3
-          - Dial
-          - Atom
-          - AtomS3
-          - AtomS3R
+#          - Fire  # ESP32: represented by Core
+#          - StampS3  # ESP32-S3: represented by CoreS3
+#          - Dial  # ESP32-S3: represented by CoreS3
+#          - Atom  # ESP32: represented by Core
+#          - AtomS3  # ESP32-S3: represented by CoreS3
+#          - AtomS3R  # ESP32-S3: represented by CoreS3
           - NanoC6
-          - StickCPlus
-          - StickCPlus2
-          - StickS3
-          - Paper
-          - CoreInk
-          - Cardputer
+          - NanoH2
+#          - StickCPlus  # ESP32: represented by Core
+#          - StickCPlus2  # ESP32: represented by Core
+#          - StickS3  # ESP32-S3: represented by CoreS3
+#          - Paper  # ESP32: represented by Core
+#          - CoreInk  # ESP32: represented by Core
+#          - Cardputer  # ESP32-S3: represented by CoreS3
           - Tab5
-          - NessoN1
+#          - NessoN1  # ESP32-C6: represented by NanoC6
 
         framework:
           - Arduino
@@ -82,23 +92,37 @@ jobs:
         espressif32:
           - latest
 
+        # NanoH2 (ESP32-H2) has no Wi-Fi
+        exclude:
+          - {board: NanoH2, example: NTPSync}
+
+        # AlarmNotify / PeriodicTimer have an env for Core only
         include:
-          - example: AlarmNotify
-            board: Core
-            framework: Arduino
-            espressif32: latest
-          - example: PeriodicTimer
-            board: Core
-            framework: Arduino
-            espressif32: latest
+          - {unit: UnitRTC, example: AlarmNotify, board: Core, framework: Arduino, espressif32: latest}
+          - {unit: UnitRTC, example: PeriodicTimer, board: Core, framework: Arduino, espressif32: latest}
+          # NTPSync with the built-in RX8130CE of Tab5 (-DBUILTIN_UNIT_RX8130 in the env)
+          - {unit: BuiltinRX8130, example: NTPSync, board: Tab5, framework: Arduino, espressif32: latest}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install intelhex
+        run: pip install intelhex
+
       - name: Build examples
         uses: karniv00l/platformio-run-action@v1
         with:
-          environments: UnitRTC_${{ matrix.example }}_${{ matrix.board }}_${{ matrix.framework }}_${{ matrix.espressif32 }}
+          environments: ${{ matrix.unit != '' && format('{0}_{1}_{2}_{3}_{4}', matrix.unit, matrix.example, matrix.board, matrix.framework, matrix.espressif32) || format('{0}_{1}_{2}_{3}', matrix.example, matrix.board, matrix.framework, matrix.espressif32) }}
+#         targets:
           project-dir: "./"
           project-conf: "./platformio.ini"
+#          jobs: 6
+#          silent: false
+#          verbose: true
+#          disable-auto-clean: false

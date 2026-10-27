@@ -4,25 +4,66 @@
  * SPDX-License-Identifier: MIT
  */
 /*
-  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
-  - Sync time from NTP via WiFi, then set RTC
+  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563) or the built-in RX8130CE of Tab5
+  - Sync time from NTP via Wi-Fi, then set RTC
+  Wi-Fi uses esp_wifi directly (wifi_connect.hpp), so the same code builds with Arduino and ESP-IDF.
+  ESP32-H2 (NanoH2) has no Wi-Fi and is not supported by this example.
 */
 #include <M5Unified.h>
 #include <M5UnitUnified.h>
 #include <M5UnitUnifiedRTC.h>
-#include <M5HAL.hpp>
-#include <WiFi.h>
-#include <esp_sntp.h>
+#include <wiring/m5_unit_unified_wiring.hpp>
+#include "wifi_connect.hpp"
+
+// *************************************************************
+// Choose one define symbol to match the RTC you are using
+// *************************************************************
+#if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
+// For Unit RTC (U126)
+#define USING_UNIT_RTC
+// For Tab5 (C145) built-in RX8130CE (internal I2C)
+// #define BUILTIN_UNIT_RX8130
+#endif
+#include <esp_idf_version.h>
 #include <esp_random.h>
-#include <algorithm>  // std::shuffle
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+#include <esp_netif_sntp.h>
+#else
+#include <esp_sntp.h>
+#endif
+#include <sys/time.h>
+#include <algorithm>  // std::shuffle, std::min, std::max
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+
+// ==============================================================
+// NOTICE: Set your Wi-Fi credentials and timezone before building
+// ==============================================================
+// Wi-Fi credentials: fill in the defines below or give them as build options
+// (e.g. -DEXAMPLE_SSID="\"YOUR_SSID\"" -DEXAMPLE_PASSWORD="\"PASSWORD\"").
+// An empty SSID uses the config stored in NVS by an earlier connection.
+// ESP-IDF: the settings come from menuconfig (main/Kconfig.projbuild)
+#if !defined(ARDUINO)
+#if !defined(EXAMPLE_SSID)
+#define EXAMPLE_SSID CONFIG_EXAMPLE_WIFI_SSID
+#endif
+#if !defined(EXAMPLE_PASSWORD)
+#define EXAMPLE_PASSWORD CONFIG_EXAMPLE_WIFI_PASSWORD
+#endif
+#endif
+
+#if !defined(EXAMPLE_SSID)
+#define EXAMPLE_SSID ""  // SSID
+#endif
+#if !defined(EXAMPLE_PASSWORD)
+#define EXAMPLE_PASSWORD ""  // SSID Password
+#endif
 
 namespace {
-// ==============================================================
-// NOTICE: Set your WiFi credentials and timezone before building
-// ==============================================================
-const char* WIFI_SSID = "";  // Your WiFi SSID
-const char* WIFI_PASS = "";  // Your WiFi password
+const char* WIFI_SSID = EXAMPLE_SSID;
+const char* WIFI_PASS = EXAMPLE_PASSWORD;
 // POSIX timezone string (default: JST-9 = UTC+9, no DST)
 const char* YOUR_TIMEZONE = "JST-9";
 // const char* YOUR_TIMEZONE = "EST5EDT,M3.2.0,M11.1.0";  // US Eastern (UTC-5, DST)
@@ -77,7 +118,18 @@ constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 
 auto& lcd = M5.Display;
 m5::unit::UnitUnified Units;
+#if defined(USING_UNIT_RTC)
+#pragma message("Using Unit RTC")
 m5::unit::UnitRTC unit;
+#elif defined(BUILTIN_UNIT_RX8130)
+#pragma message("Using the built-in RX8130 (Tab5)")
+#if !defined(CONFIG_IDF_TARGET_ESP32P4)
+#error "BUILTIN_UNIT_RX8130 is for Tab5 (ESP32-P4)"
+#endif
+m5::unit::Tab5BuiltinRTC unit;  // charges the backup supercapacitor (BT1) by default
+#else
+#error "Choose the RTC"
+#endif
 
 void display_printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void display_printf(const char* fmt, ...)
@@ -88,76 +140,101 @@ void display_printf(const char* fmt, ...)
     va_end(args);
 }
 
+// Show the progress of the Wi-Fi connection and the NTP sync on both Serial and Display
+void progress_printf(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+void progress_printf(const char* fmt, ...)
+{
+    char buf[64]{};
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    M5.Log.printf("%s", buf);
+    lcd.startWrite();
+    lcd.print(buf);
+    lcd.endWrite();
+}
+
+// Get the time from the NTP servers in ntpURLTable and set the system clock (needs Wi-Fi)
+bool sync_sntp()
+{
+    constexpr uint32_t SYNC_TIMEOUT_MS{10000};
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+    // esp_netif_sntp takes the TCP/IP core lock itself. Three servers need CONFIG_LWIP_SNTP_MAX_SERVERS >= 3
+    // (sdkconfig.defaults for ESP-IDF; the Arduino core already uses 3)
+    esp_sntp_config_t cfg =
+        ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3, ESP_SNTP_SERVER_LIST(ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]));
+    if (esp_netif_sntp_init(&cfg) != ESP_OK) {
+        M5_LOGE("esp_netif_sntp_init failed");
+        return false;
+    }
+    // Wait in 1 second steps to show the progress
+    esp_err_t err{ESP_ERR_TIMEOUT};
+    for (uint32_t i = 0; i < SYNC_TIMEOUT_MS / 1000 && err == ESP_ERR_TIMEOUT; ++i) {
+        err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(1000));
+        if (err == ESP_ERR_TIMEOUT) {
+            progress_printf(".");
+        }
+    }
+    progress_printf("\n");
+    esp_netif_sntp_deinit();
+    return err == ESP_OK;
+#else
+    // ESP-IDF 4.4 (Arduino-ESP32 2.x)
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    for (int i = 0; i < 3; ++i) {
+        sntp_setservername(i, ntpURLTable[i]);
+    }
+    sntp_init();
+    const auto start_at = m5::utility::millis();
+    auto dot_at         = start_at;
+    // sntp_get_sync_status() resets the status after returning COMPLETED, so read it only once per check
+    sntp_sync_status_t status{SNTP_SYNC_STATUS_RESET};
+    while ((status = sntp_get_sync_status()) != SNTP_SYNC_STATUS_COMPLETED &&
+           !m5::utility::hasElapsed(start_at, SYNC_TIMEOUT_MS)) {
+        m5::utility::delay(100);
+        if (m5::utility::hasElapsed(dot_at, 1000)) {
+            dot_at += 1000;
+            progress_printf(".");
+        }
+    }
+    progress_printf("\n");
+    sntp_stop();
+    return status == SNTP_SYNC_STATUS_COMPLETED;
+#endif
+}
+
 // Sync NTP time and set RTC (shows progress on Display)
 bool sync_ntp_to_rtc()
 {
-    M5_LOGI("Connecting to WiFi: %s", WIFI_SSID);
-    display_printf("WiFi connecting");
-
-    // Tab5 (ESP32-P4) uses ESP32-C6 co-processor for WiFi via SDIO; set pins before WiFi.begin()
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-    if (M5.getBoard() == m5::board_t::board_M5Tab5) {
-        constexpr int SDIO2_CLK = 12;
-        constexpr int SDIO2_CMD = 13;
-        constexpr int SDIO2_D0  = 11;
-        constexpr int SDIO2_D1  = 10;
-        constexpr int SDIO2_D2  = 9;
-        constexpr int SDIO2_D3  = 8;
-        constexpr int SDIO2_RST = 15;
-        WiFi.setPins(SDIO2_CLK, SDIO2_CMD, SDIO2_D0, SDIO2_D1, SDIO2_D2, SDIO2_D3, SDIO2_RST);
-    }
-#endif
-
-    WiFi.mode(WIFI_STA);
-    if (WIFI_SSID[0] && WIFI_PASS[0]) {
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
-    } else {
-        WiFi.begin();
-    }
-
-    int retry = 20;
-    while (retry-- > 0 && WiFi.status() != WL_CONNECTED) {
-        display_printf(".");
-        m5::utility::delay(500);
-    }
-    if (WiFi.status() != WL_CONNECTED) {
-        M5_LOGE("WiFi connection failed");
-        display_printf("\nWiFi FAILED\n");
-        WiFi.disconnect(true);
-        WiFi.mode(WIFI_OFF);
+    progress_printf("Wi-Fi: %s\n", WIFI_SSID[0] ? WIFI_SSID : "(stored config)");
+    auto start_at = m5::utility::millis();
+    if (!wifi_connect::connect(WIFI_SSID, WIFI_PASS)) {
+        progress_printf("Wi-Fi: FAILED\n");
+        wifi_connect::disconnect();
         return false;
     }
-    M5_LOGI("WiFi connected");
-    display_printf("\nWiFi OK\n");
+    progress_printf("Wi-Fi: OK %lu ms\n", static_cast<unsigned long>(m5::utility::millis() - start_at));
 
     // Shuffle NTP servers
     std::shuffle(std::begin(ntpURLTable), std::end(ntpURLTable), ESP32RNG{});
-    M5_LOGI("NTP: %s / %s / %s", ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
-    configTzTime(YOUR_TIMEZONE, ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
+    M5_LOGI("NTP servers: %s / %s / %s", ntpURLTable[0], ntpURLTable[1], ntpURLTable[2]);
+    progress_printf("NTP: syncing");
+    start_at          = m5::utility::millis();
+    const bool synced = sync_sntp();
 
-    // Wait for sync
-    display_printf("NTP syncing");
-    retry = 10;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && --retry >= 0) {
-        M5_LOGI("  NTP sync in progress...");
-        display_printf(".");
-        m5::utility::delay(1000);
-    }
+    // Done with Wi-Fi
+    wifi_connect::disconnect();
 
-    // Done with WiFi
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-
-    struct tm t {
-    };
-    if (!getLocalTime(&t, 10000)) {
-        M5_LOGE("Failed to get NTP time");
-        display_printf("\nNTP FAILED\n");
+    if (!synced) {
+        progress_printf("NTP: FAILED\n");
         return false;
     }
-    M5_LOGI("NTP time: %04d-%02d-%02d %02d:%02d:%02d", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
-            t.tm_sec);
-    display_printf("\nNTP OK\n");
+    progress_printf("NTP: OK %lu ms\n", static_cast<unsigned long>(m5::utility::millis() - start_at));
+    time_t now_local = time(nullptr);
+    struct tm t      = *localtime(&now_local);
+    progress_printf("%04d-%02d-%02d %02d:%02d:%02d\n", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min,
+                    t.tm_sec);
 
     // Set RTC from NTP (use GMT for RTC storage)
     // Stop RTC clock for precise time setting (prescaler held in reset)
@@ -170,8 +247,7 @@ bool sync_ntp_to_rtc()
     // Write time while clock is stopped (no carry race condition)
     if (!unit.writeDateTime(gmt)) {
         unit.writeStop(false);
-        M5_LOGE("Failed to set RTC");
-        display_printf("RTC set FAILED\n");
+        progress_printf("RTC: set FAILED\n");
         return false;
     }
 
@@ -184,7 +260,7 @@ bool sync_ntp_to_rtc()
 
     M5_LOGI("RTC set to (GMT): %04d-%02d-%02d %02d:%02d:%02d", gmt.tm_year + 1900, gmt.tm_mon + 1, gmt.tm_mday,
             gmt.tm_hour, gmt.tm_min, gmt.tm_sec);
-    display_printf("RTC set OK\n");
+    progress_printf("RTC: set OK\n");
 
     return true;
 }
@@ -200,59 +276,43 @@ void setup()
     if (lcd.height() > lcd.width()) {
         lcd.setRotation(1);
     }
+    // 6x8 font scaled so that 20 columns x 8 rows fit the display; the background is filled when overwriting
+    lcd.setTextSize(std::max<int32_t>(1, std::min(lcd.width() / (20 * 6), lcd.height() / (8 * 8))));
+    lcd.setTextColor(TFT_WHITE, TFT_BLACK);
 
-    auto board = M5.getBoard();
-
-    // NessoN1: Arduino Wire (I2C_NUM_0) cannot be used for GROVE port.
-    //   Wire is used by M5Unified In_I2C for internal devices (IOExpander etc.).
-    //   Wire1 exists but is reserved for HatPort — cannot be used for GROVE.
-    //   Reconfiguring Wire to GROVE pins breaks In_I2C, causing ESP_ERR_INVALID_STATE in M5.update().
-    //   Solution: Use SoftwareI2C via M5HAL (bit-banging) for the GROVE port.
-    // NanoC6: Wire.begin() on GROVE pins conflicts with m5gfx::i2c registered by Ex_I2C.setPort()
-    //   on the same I2C_NUM_0, causing sporadic NACK errors.
-    //   Solution: Use M5.Ex_I2C (m5gfx::i2c) directly instead of Arduino Wire.
-    bool unit_ready{};
-    if (board == m5::board_t::board_ArduinoNessoN1) {
-        // NessoN1: GROVE is on port_b (GPIO 5/4), not port_a (which maps to Wire pins 8/10)
-        auto pin_num_sda = M5.getPin(m5::pin_name_t::port_b_out);
-        auto pin_num_scl = M5.getPin(m5::pin_name_t::port_b_in);
-        M5_LOGI("getPin(M5HAL): SDA:%u SCL:%u", pin_num_sda, pin_num_scl);
-        m5::hal::bus::I2CBusConfig i2c_cfg;
-        i2c_cfg.pin_sda = m5::hal::gpio::getPin(pin_num_sda);
-        i2c_cfg.pin_scl = m5::hal::gpio::getPin(pin_num_scl);
-        auto i2c_bus    = m5::hal::bus::i2c::getBus(i2c_cfg);
-        M5_LOGI("Bus:%d", i2c_bus.has_value());
-        unit_ready = Units.add(unit, i2c_bus ? i2c_bus.value() : nullptr) && Units.begin();
-    } else if (board == m5::board_t::board_M5NanoC6) {
-        M5_LOGI("Using M5.Ex_I2C");
-        unit_ready = Units.add(unit, M5.Ex_I2C) && Units.begin();
-    } else {
-        auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
-        auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
-        M5_LOGI("getPin: SDA:%u SCL:%u", pin_num_sda, pin_num_scl);
-        Wire.end();
-        Wire.begin(pin_num_sda, pin_num_scl, 100 * 1000U);
-        unit_ready = Units.add(unit, Wire) && Units.begin();
+#if defined(BUILTIN_UNIT_RX8130)
+    // The built-in RX8130CE is on the internal I2C bus
+    if (M5.getBoard() != m5::board_t::board_M5Tab5) {
+        M5_LOGE("The board is not Tab5");
+        m5::unit::wiring::failStop();
     }
+    bool unit_ready = Units.add(unit, M5.In_I2C) && Units.begin();
+#else
+    // Board-aware connection: NessoN1 -> SoftwareI2C on the GROVE port, NanoC6/NanoH2 -> M5.Ex_I2C, others -> Wire
+    bool unit_ready = m5::unit::wiring::addI2C(Units, unit) && Units.begin();
+#endif
     if (!unit_ready) {
         M5_LOGE("Failed to begin");
-        while (true) {
-            m5::utility::delay(10000);
-        }
+        m5::unit::wiring::failStop();
     }
-
-    M5_LOGI("M5UnitUnified has been begun");
+    M5_LOGI("M5UnitUnified initialized");
     M5_LOGI("%s", Units.debugInfo().c_str());
 
-    // Check voltage low (battery backup lost)
-    if (unit.getVoltLow()) {
+    // Check whether the time data were lost (backup voltage low / oscillation stop)
+    bool volt_low{};
+    if (unit.readVoltLow(volt_low) && volt_low) {
         M5_LOGW("RTC voltage low - time may be invalid");
     }
 
-    // Sync from NTP if WiFi credentials are configured
+    // Local time zone for localtime() (the RTC keeps GMT)
+    setenv("TZ", YOUR_TIMEZONE, 1);
+    tzset();
+
+    // Sync from NTP (Wi-Fi credentials in EXAMPLE_SSID / EXAMPLE_PASSWORD, or the config stored in NVS)
     if (!sync_ntp_to_rtc()) {
         M5_LOGW("NTP sync skipped or failed - using current RTC time");
     }
+    m5::utility::delay(2000);  // Keep the progress on the display for a while
     lcd.startWrite();
     lcd.fillScreen(0);
     lcd.endWrite();
@@ -285,15 +345,22 @@ void loop()
 
     if (M5.BtnA.wasClicked()) {
         // Read and show RTC (GMT)
-        auto dt = unit.getDateTime();
-        M5.Log.printf("RTC(GMT) %04d-%02d-%02d(%s) %02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
-                      WDAY_NAMES[dt.date.weekDay % 7], dt.time.hours, dt.time.minutes, dt.time.seconds);
+        m5::unit::pcf8563::rtc_datetime_t dt{};
+        lcd.setCursor(0, lcd.fontHeight() * 3);  // Below the local time
         lcd.startWrite();
-        display_printf("RTC(GMT)\n%04d-%02d-%02d(%s)\n%02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
-                       WDAY_NAMES[dt.date.weekDay % 7], dt.time.hours, dt.time.minutes, dt.time.seconds);
+        if (unit.readDateTime(dt)) {
+            const char* wday{(dt.date.weekDay >= 0 && dt.date.weekDay <= 6) ? WDAY_NAMES[dt.date.weekDay] : "---"};
+            M5.Log.printf("RTC(GMT) %04d-%02d-%02d(%s) %02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
+                          wday, dt.time.hours, dt.time.minutes, dt.time.seconds);
+            display_printf("RTC(GMT)\n%04d-%02d-%02d(%s)\n%02d:%02d:%02d\n", dt.date.year, dt.date.month, dt.date.date,
+                           wday, dt.time.hours, dt.time.minutes, dt.time.seconds);
+        } else {
+            M5_LOGE("Failed to read the RTC");
+            display_printf("RTC read failed\n");
+        }
         lcd.endWrite();
     } else if (M5.BtnA.wasHold()) {
-        // Re-sync RTC from NTP (progress shown on Display)
+        // Re-sync RTC from NTP (progress shown on Serial and Display)
         M5_LOGI("Re-syncing NTP...");
         lcd.startWrite();
         lcd.fillScreen(0);
@@ -303,8 +370,42 @@ void loop()
         if (!sync_ntp_to_rtc()) {
             M5_LOGW("NTP sync failed");
         }
+        m5::utility::delay(2000);  // Keep the progress on the display for a while
         lcd.startWrite();
         lcd.fillScreen(0);
         lcd.endWrite();
     }
 }
+
+#if !defined(ARDUINO)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_timer.h>
+
+#if CONFIG_FREERTOS_UNICORE
+// Single-core SoCs: run loop() back-to-back, but every ~2 s yield a 5 ms slice so the IDLE task
+// runs and feeds the task watchdog (default 5 s).
+static inline void feedIdleTaskPeriodically(void)
+{
+    constexpr uint32_t FEED_INTERVAL_MS{2000};
+    constexpr TickType_t FEED_SLEEP_TICKS{pdMS_TO_TICKS(5)};
+    static uint32_t s_last_feed_ms{};
+    const uint32_t now_ms{static_cast<uint32_t>(esp_timer_get_time() / 1000)};
+    if (now_ms - s_last_feed_ms >= FEED_INTERVAL_MS) {
+        s_last_feed_ms = now_ms;
+        vTaskDelay(FEED_SLEEP_TICKS);
+    }
+}
+#endif
+
+extern "C" void app_main(void)
+{
+    setup();
+    for (;;) {
+#if CONFIG_FREERTOS_UNICORE
+        feedIdleTaskPeriodically();
+#endif
+        loop();
+    }
+}
+#endif

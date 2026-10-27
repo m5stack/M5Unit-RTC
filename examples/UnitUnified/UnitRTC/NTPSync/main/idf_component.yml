@@ -1,0 +1,23 @@
+## Dependencies for the ESP-IDF build of the UnitRTC NTPSync example.
+## - M5Unit-RTC is taken from the local checkout (path) so the example builds against the
+##   library in this repo. M5UnitUnified (and its transitive deps M5HAL / M5Utility) are pulled in via
+##   M5Unit-RTC's own idf_component.yml (git main until the ESP Component Registry publish).
+## - M5Unified >=0.2.17 declares M5GFX as a transitive dependency in its idf_component.yml.
+dependencies:
+  idf: ">=5.1"
+  m5stack/M5Unit-RTC:
+    path: "../../../../.."
+  m5stack/M5Unified: ">=0.2.17"
+  # ESP32-P4 (Tab5) has no on-die radio: its Wi-Fi runs on an ESP32-C6 co-processor over SDIO (esp_hosted),
+  # configured by esp_hosted's Tab5 preset (sdkconfig.defaults.esp32p4). Below IDF 5.3 neither is fetched and
+  # the ESP32-P4 build is compiled out by the Wi-Fi capability guard. esp_hosted stays on the 2.x series.
+  espressif/esp_wifi_remote:
+    version: ">=0.8"
+    rules:
+      - if: "target == esp32p4"
+      - if: "idf_version >=5.3"
+  espressif/esp_hosted:
+    version: ">=2.12.13,<3.0"
+    rules:
+      - if: "target == esp32p4"
+      - if: "idf_version >=5.3"

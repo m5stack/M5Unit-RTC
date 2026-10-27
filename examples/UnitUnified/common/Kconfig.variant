@@ -1,0 +1,19 @@
+# "Target RTC" selection for the UnitRTC examples (ESP-IDF: NTPSync / AlarmNotify / PeriodicTimer).
+# rsource'd from each example's main/Kconfig.projbuild. The chosen CONFIG_EXAMPLE_* is mapped to the
+# source-level macro in common/variant.cmake (shared with the Arduino build).
+menu "M5Unit-RTC example"
+
+choice EXAMPLE_RTC_VARIANT
+    prompt "Target RTC"
+    default EXAMPLE_USING_UNIT_RTC
+    help
+        Which RTC this example uses.
+
+    config EXAMPLE_USING_UNIT_RTC
+        bool "Unit RTC (U126, I2C / GROVE)"
+    config EXAMPLE_BUILTIN_UNIT_RX8130
+        bool "M5Tab5 built-in RX8130CE (internal I2C)"
+        depends on IDF_TARGET_ESP32P4
+endchoice
+
+endmenu

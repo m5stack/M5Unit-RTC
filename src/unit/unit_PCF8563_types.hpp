@@ -23,14 +23,16 @@ namespace pcf8563 {
   @brief Time of day (hours, minutes, seconds)
  */
 struct __attribute__((packed)) rtc_time_t {
-    int8_t hours{};
-    int8_t minutes{};
-    int8_t seconds{};
+    int8_t hours{};    //!< Hours 0-23 (-1: unset / disabled)
+    int8_t minutes{};  //!< Minutes 0-59 (-1: unset / disabled)
+    int8_t seconds{};  //!< Seconds 0-59 (-1: unset / disabled)
 
+    //! @brief Construct from fields (default -1: unset)
     rtc_time_t(int8_t hours_ = -1, int8_t minutes_ = -1, int8_t seconds_ = -1)
         : hours{hours_}, minutes{minutes_}, seconds{seconds_}
     {
     }
+    //! @brief Construct from struct tm (time fields only)
     rtc_time_t(const tm& t) : hours{(int8_t)t.tm_hour}, minutes{(int8_t)t.tm_min}, seconds{(int8_t)t.tm_sec}
     {
     }
@@ -52,26 +54,32 @@ struct __attribute__((packed)) rtc_time_t {
 
 ///@name rtc_time_t comparison operators
 ///@{
+//! @brief Equal (all fields)
 inline bool operator==(const rtc_time_t& lhs, const rtc_time_t& rhs)
 {
     return lhs.hours == rhs.hours && lhs.minutes == rhs.minutes && lhs.seconds == rhs.seconds;
 }
+//! @brief Not equal (all fields)
 inline bool operator!=(const rtc_time_t& lhs, const rtc_time_t& rhs)
 {
     return !(lhs == rhs);
 }
+//! @brief Less than (all fields)
 inline bool operator<(const rtc_time_t& lhs, const rtc_time_t& rhs)
 {
     return std::tie(lhs.hours, lhs.minutes, lhs.seconds) < std::tie(rhs.hours, rhs.minutes, rhs.seconds);
 }
+//! @brief Less than or equal (all fields)
 inline bool operator<=(const rtc_time_t& lhs, const rtc_time_t& rhs)
 {
     return !(rhs < lhs);
 }
+//! @brief Greater than (all fields)
 inline bool operator>(const rtc_time_t& lhs, const rtc_time_t& rhs)
 {
     return rhs < lhs;
 }
+//! @brief Greater than or equal (all fields)
 inline bool operator>=(const rtc_time_t& lhs, const rtc_time_t& rhs)
 {
     return !(lhs < rhs);
@@ -92,10 +100,12 @@ struct __attribute__((packed)) rtc_date_t {
     //! weekDay 0:sun / 1:mon / 2:tue / 3:wed / 4:thu / 5:fri / 6:sat
     int8_t weekDay{};
 
+    //! @brief Construct from fields (date / weekDay default -1: unset)
     rtc_date_t(int16_t year_ = 2000, int8_t month_ = 1, int8_t date_ = -1, int8_t weekDay_ = -1)
         : year{year_}, month{month_}, date{date_}, weekDay{weekDay_}
     {
     }
+    //! @brief Construct from struct tm (date fields only)
     rtc_date_t(const tm& t)
         : year{(int16_t)(t.tm_year + 1900)},
           month{(int8_t)(t.tm_mon + 1)},
@@ -122,26 +132,32 @@ struct __attribute__((packed)) rtc_date_t {
 
 ///@name rtc_date_t comparison operators (weekDay is excluded)
 ///@{
+//! @brief Equal (weekDay is ignored)
 inline bool operator==(const rtc_date_t& lhs, const rtc_date_t& rhs)
 {
     return lhs.year == rhs.year && lhs.month == rhs.month && lhs.date == rhs.date;
 }
+//! @brief Not equal (weekDay is ignored)
 inline bool operator!=(const rtc_date_t& lhs, const rtc_date_t& rhs)
 {
     return !(lhs == rhs);
 }
+//! @brief Less than (weekDay is ignored)
 inline bool operator<(const rtc_date_t& lhs, const rtc_date_t& rhs)
 {
     return std::tie(lhs.year, lhs.month, lhs.date) < std::tie(rhs.year, rhs.month, rhs.date);
 }
+//! @brief Less than or equal (weekDay is ignored)
 inline bool operator<=(const rtc_date_t& lhs, const rtc_date_t& rhs)
 {
     return !(rhs < lhs);
 }
+//! @brief Greater than (weekDay is ignored)
 inline bool operator>(const rtc_date_t& lhs, const rtc_date_t& rhs)
 {
     return rhs < lhs;
 }
+//! @brief Greater than or equal (weekDay is ignored)
 inline bool operator>=(const rtc_date_t& lhs, const rtc_date_t& rhs)
 {
     return !(lhs < rhs);
@@ -153,13 +169,16 @@ inline bool operator>=(const rtc_date_t& lhs, const rtc_date_t& rhs)
   @brief Combined date and time
  */
 struct __attribute__((packed)) rtc_datetime_t {
-    rtc_date_t date{};
-    rtc_time_t time{};
+    rtc_date_t date{};  //!< Date
+    rtc_time_t time{};  //!< Time
 
+    //! @brief Default constructor (fields unset)
     rtc_datetime_t() = default;
+    //! @brief Construct from date and time
     rtc_datetime_t(const rtc_date_t& d, const rtc_time_t& t) : date{d}, time{t}
     {
     }
+    //! @brief Construct from struct tm
     rtc_datetime_t(const tm& t) : date{t}, time{t}
     {
     }
@@ -198,14 +217,17 @@ struct __attribute__((packed)) rtc_datetime_t {
 
 ///@name rtc_datetime_t comparison operators (weekDay is excluded)
 ///@{
+//! @brief Equal (weekDay is ignored)
 inline bool operator==(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
 {
     return lhs.date == rhs.date && lhs.time == rhs.time;
 }
+//! @brief Not equal (weekDay is ignored)
 inline bool operator!=(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
 {
     return !(lhs == rhs);
 }
+//! @brief Less than (weekDay is ignored)
 inline bool operator<(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
 {
     if (lhs.date != rhs.date) {
@@ -213,14 +235,17 @@ inline bool operator<(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
     }
     return lhs.time < rhs.time;
 }
+//! @brief Less than or equal (weekDay is ignored)
 inline bool operator<=(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
 {
     return !(rhs < lhs);
 }
+//! @brief Greater than (weekDay is ignored)
 inline bool operator>(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
 {
     return rhs < lhs;
 }
+//! @brief Greater than or equal (weekDay is ignored)
 inline bool operator>=(const rtc_datetime_t& lhs, const rtc_datetime_t& rhs)
 {
     return !(lhs < rhs);

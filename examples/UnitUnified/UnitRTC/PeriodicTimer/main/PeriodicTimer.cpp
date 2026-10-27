@@ -4,16 +4,30 @@
  * SPDX-License-Identifier: MIT
  */
 /*
-  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563)
-  - Countdown timer using writeTimer() convenience API
-  - BtnA click: cycle interval and repeat mode
-    5s repeat -> 10s repeat -> 30s repeat -> 5s oneshot -> 10s oneshot -> stop -> ...
+  Example using M5UnitUnified for UnitRTC (PCF8563/BM8563/HYM8563) or the built-in RX8130CE of Tab5
+  - Periodic countdown timer using writeTimer() convenience API (it repeats until writeTimer(0) stops it)
+  - The timer flag is polled by update(); the interrupt output of the RTC is not used
+  - With Unit RTC the first period is 1 to 2 seconds shorter than the interval, the later ones are exact
+    (see UnitPCF8563::writeTimer())
+  - BtnA click: cycle the interval
+    5s -> 10s -> 30s -> stop -> ...
 */
 #include <M5Unified.h>
 #include <M5UnitUnified.h>
 #include <M5UnitUnifiedRTC.h>
-#include <M5HAL.hpp>
+#include <wiring/m5_unit_unified_wiring.hpp>
+
+// *************************************************************
+// Choose one define symbol to match the RTC you are using
+// *************************************************************
+#if !defined(USING_UNIT_RTC) && !defined(BUILTIN_UNIT_RX8130)
+// For Unit RTC (U126)
+#define USING_UNIT_RTC
+// For Tab5 (C145) built-in RX8130CE (internal I2C)
+// #define BUILTIN_UNIT_RX8130
+#endif
 #include <sys/time.h>
+#include <algorithm>
 #include <cstdint>
 
 namespace {
@@ -32,22 +46,31 @@ constexpr char WDAY_NAMES[][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat
 
 auto& lcd = M5.Display;
 LGFX_Sprite canvas(&lcd);
+// The canvas holds 20 columns x 8 rows of the 6x8 font and is zoomed to fit the display
+constexpr int32_t CANVAS_WIDTH{20 * 6};
+constexpr int32_t CANVAS_HEIGHT{8 * 8};
+float canvas_zoom{1.0f};
 m5::unit::UnitUnified Units;
+#if defined(USING_UNIT_RTC)
+#pragma message("Using Unit RTC")
 m5::unit::UnitRTC unit;
+#elif defined(BUILTIN_UNIT_RX8130)
+#pragma message("Using the built-in RX8130 (Tab5)")
+#if !defined(CONFIG_IDF_TARGET_ESP32P4)
+#error "BUILTIN_UNIT_RX8130 is for Tab5 (ESP32-P4)"
+#endif
+m5::unit::Tab5BuiltinRTC unit;  // charges the backup supercapacitor (BT1) by default
+#else
+#error "Choose the RTC"
+#endif
 
 volatile uint32_t timer_count{};
 volatile bool timer_fired{};
 bool indicator_lit{};
 
-// Mode table: {seconds, repeat}
-struct TimerMode {
-    uint8_t seconds;
-    bool repeat;
-};
-constexpr TimerMode MODES[] = {
-    {5, true}, {10, true}, {30, true}, {5, false}, {10, false}, {0, false},
-};
-size_t mode_idx{};
+// Timer intervals in seconds (0: stop)
+constexpr uint8_t INTERVALS[] = {5, 10, 30, 0};
+size_t interval_idx{};
 
 void on_timer()
 {
@@ -76,19 +99,19 @@ void draw_indicator(bool lit)
     canvas.fillCircle(x, y, r, lit ? 2 : 3);  // palette: 2=TFT_BLUE, 3=TFT_DARKGREY
 }
 
-// Start timer with current mode
+// Start the timer with the current interval
 void start_timer()
 {
-    auto& m = MODES[mode_idx];
+    const uint8_t seconds{INTERVALS[interval_idx]};
 
-    if (m.seconds == 0) {
+    if (seconds == 0) {
         unit.writeTimer(0);
         M5.Log.printf("Timer stopped\n");
         return;
     }
 
-    uint32_t actual = unit.writeTimer(static_cast<uint32_t>(m.seconds) * 1000, m.repeat);
-    M5.Log.printf("Timer: %lu ms, %s\n", (unsigned long)actual, m.repeat ? "repeat" : "oneshot");
+    const uint32_t actual{unit.writeTimer(static_cast<uint32_t>(seconds) * 1000)};
+    M5.Log.printf("Timer: %lu ms\n", (unsigned long)actual);
 }
 
 }  // namespace
@@ -103,69 +126,48 @@ void setup()
         lcd.setRotation(1);
     }
 
-    auto board = M5.getBoard();
-
     // Configure timer callback (polling mode)
     auto cfg     = unit.config();
     cfg.on_timer = on_timer;
     unit.config(cfg);
 
-    // NessoN1: Arduino Wire (I2C_NUM_0) cannot be used for GROVE port.
-    //   Wire is used by M5Unified In_I2C for internal devices (IOExpander etc.).
-    //   Wire1 exists but is reserved for HatPort — cannot be used for GROVE.
-    //   Reconfiguring Wire to GROVE pins breaks In_I2C, causing ESP_ERR_INVALID_STATE in M5.update().
-    //   Solution: Use SoftwareI2C via M5HAL (bit-banging) for the GROVE port.
-    // NanoC6: Wire.begin() on GROVE pins conflicts with m5gfx::i2c registered by Ex_I2C.setPort()
-    //   on the same I2C_NUM_0, causing sporadic NACK errors.
-    //   Solution: Use M5.Ex_I2C (m5gfx::i2c) directly instead of Arduino Wire.
-    bool unit_ready{};
-    if (board == m5::board_t::board_ArduinoNessoN1) {
-        // NessoN1: GROVE is on port_b (GPIO 5/4), not port_a (which maps to Wire pins 8/10)
-        auto pin_num_sda = M5.getPin(m5::pin_name_t::port_b_out);
-        auto pin_num_scl = M5.getPin(m5::pin_name_t::port_b_in);
-        M5_LOGI("getPin(M5HAL): SDA:%u SCL:%u", pin_num_sda, pin_num_scl);
-        m5::hal::bus::I2CBusConfig i2c_cfg;
-        i2c_cfg.pin_sda = m5::hal::gpio::getPin(pin_num_sda);
-        i2c_cfg.pin_scl = m5::hal::gpio::getPin(pin_num_scl);
-        auto i2c_bus    = m5::hal::bus::i2c::getBus(i2c_cfg);
-        M5_LOGI("Bus:%d", i2c_bus.has_value());
-        unit_ready = Units.add(unit, i2c_bus ? i2c_bus.value() : nullptr) && Units.begin();
-    } else if (board == m5::board_t::board_M5NanoC6) {
-        M5_LOGI("Using M5.Ex_I2C");
-        unit_ready = Units.add(unit, M5.Ex_I2C) && Units.begin();
-    } else {
-        auto pin_num_sda = M5.getPin(m5::pin_name_t::port_a_sda);
-        auto pin_num_scl = M5.getPin(m5::pin_name_t::port_a_scl);
-        M5_LOGI("getPin: SDA:%u SCL:%u", pin_num_sda, pin_num_scl);
-        Wire.end();
-        Wire.begin(pin_num_sda, pin_num_scl, 100 * 1000U);
-        unit_ready = Units.add(unit, Wire) && Units.begin();
+#if defined(BUILTIN_UNIT_RX8130)
+    // The built-in RX8130CE is on the internal I2C bus
+    if (M5.getBoard() != m5::board_t::board_M5Tab5) {
+        M5_LOGE("The board is not Tab5");
+        m5::unit::wiring::failStop();
     }
+    bool unit_ready = Units.add(unit, M5.In_I2C) && Units.begin();
+#else
+    // Board-aware connection: NessoN1 -> SoftwareI2C on the GROVE port, NanoC6/NanoH2 -> M5.Ex_I2C, others -> Wire
+    bool unit_ready = m5::unit::wiring::addI2C(Units, unit) && Units.begin();
+#endif
     if (!unit_ready) {
         M5_LOGE("Failed to begin");
-        while (true) {
-            m5::utility::delay(10000);
-        }
+        m5::unit::wiring::failStop();
     }
-
-    M5_LOGI("M5UnitUnified has been begun");
+    M5_LOGI("M5UnitUnified initialized");
     M5_LOGI("%s", Units.debugInfo().c_str());
 
-    // Check voltage low (battery backup lost)
-    if (unit.getVoltLow()) {
+    // Check whether the time data were lost (backup voltage low / oscillation stop)
+    bool volt_low{};
+    if (unit.readVoltLow(volt_low) && volt_low) {
         M5_LOGW("RTC voltage low - time may be invalid");
     }
 
     // Sync system clock from RTC (stored as GMT) and set timezone
     {
         m5::unit::pcf8563::rtc_datetime_t dt{};
-        unit.readDateTime(dt);
-        struct tm gmt = dt.to_tm();
-        time_t t      = mktime(&gmt);
-        struct timeval tv {
-            t, 0
-        };
-        settimeofday(&tv, nullptr);
+        if (unit.readDateTime(dt)) {
+            struct tm gmt = dt.to_tm();
+            time_t t      = mktime(&gmt);  // TZ is not set yet, so this is UTC
+            struct timeval tv {
+                t, 0
+            };
+            settimeofday(&tv, nullptr);
+        } else {
+            M5_LOGW("Failed to read the RTC, the system clock is not set");
+        }
         setenv("TZ", YOUR_TIMEZONE, 1);
         tzset();
         M5_LOGI("System clock set from RTC (GMT), TZ=%s", YOUR_TIMEZONE);
@@ -174,17 +176,17 @@ void setup()
     // Create sprite for flicker-free drawing (2-bit palette, internal RAM)
     canvas.setPsram(false);
     canvas.setColorDepth(2);
-    int32_t sw = lcd.width() < 320 ? lcd.width() : 320;
-    int32_t sh = lcd.height() < 240 ? lcd.height() : 240;
-    canvas.createSprite(sw, sh);
-    canvas.setFont(lcd.getFont());
-    canvas.setTextSize(lcd.getTextSizeX(), lcd.getTextSizeY());
+    canvas.createSprite(CANVAS_WIDTH, CANVAS_HEIGHT);
     canvas.setPaletteColor(0, TFT_BLACK);
     canvas.setPaletteColor(1, TFT_WHITE);
     canvas.setPaletteColor(2, TFT_BLUE);
     canvas.setPaletteColor(3, TFT_DARKGREY);
+    // Zoom the canvas by an integer factor to fit the display
+    canvas_zoom =
+        static_cast<float>(std::max<int32_t>(1, std::min(lcd.width() / CANVAS_WIDTH, lcd.height() / CANVAS_HEIGHT)));
+    lcd.fillScreen(TFT_BLACK);
 
-    // Start with first mode
+    // Start with the first interval
     start_timer();
 }
 
@@ -205,10 +207,10 @@ void loop()
         prev = 0;  // force redraw
     }
 
-    // BtnA click: cycle mode
+    // BtnA click: cycle the interval
     if (M5.BtnA.wasClicked()) {
-        mode_idx    = (mode_idx + 1) % m5::stl::size(MODES);
-        timer_count = 0;
+        interval_idx = (interval_idx + 1) % m5::stl::size(INTERVALS);
+        timer_count  = 0;
         start_timer();
         prev = 0;  // force redraw
     }
@@ -217,28 +219,60 @@ void loop()
     if (now != prev) {
         struct tm local = *localtime(&now);
 
-        auto& m        = MODES[mode_idx];
-        uint32_t count = timer_count;
+        const uint8_t seconds{INTERVALS[interval_idx]};
+        const uint32_t count{timer_count};
 
         // Serial
-        M5.Log.printf("%04d-%02d-%02d(%s) %02d:%02d:%02d  Timer:%us %s Count:%lu\n", local.tm_year + 1900,
+        M5.Log.printf("%04d-%02d-%02d(%s) %02d:%02d:%02d  Timer:%us Count:%lu\n", local.tm_year + 1900,
                       local.tm_mon + 1, local.tm_mday, WDAY_NAMES[local.tm_wday], local.tm_hour, local.tm_min,
-                      local.tm_sec, m.seconds, m.repeat ? "repeat" : "oneshot", (unsigned long)count);
+                      local.tm_sec, seconds, (unsigned long)count);
 
         // Draw to canvas (off-screen), then push to display
         canvas.fillScreen(TFT_BLACK);
         canvas.setCursor(0, 0);
         canvas_printf("%04d-%02d-%02d(%s)\n%02d:%02d:%02d\n\n", local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
                       WDAY_NAMES[local.tm_wday], local.tm_hour, local.tm_min, local.tm_sec);
-        if (m.seconds == 0) {
+        if (seconds == 0) {
             canvas_printf("Timer: OFF\nCount: %lu\n\n[BtnA] Start\n", (unsigned long)count);
         } else {
-            canvas_printf("Timer: %u sec\nMode:  %s\nCount: %lu\n\n[BtnA] Change\n", m.seconds,
-                          m.repeat ? "repeat" : "oneshot", (unsigned long)count);
+            canvas_printf("Timer: %u sec\nCount: %lu\n\n[BtnA] Change\n", seconds, (unsigned long)count);
         }
         draw_indicator(indicator_lit);
         indicator_lit = false;
-        canvas.pushSprite(0, 0);
+        canvas.pushRotateZoom(&lcd, lcd.width() / 2, lcd.height() / 2, 0.0f, canvas_zoom, canvas_zoom);
         prev = now;
     }
 }
+
+#if !defined(ARDUINO)
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_timer.h>
+
+#if CONFIG_FREERTOS_UNICORE
+// Single-core SoCs: run loop() back-to-back, but every ~2 s yield a 5 ms slice so the IDLE task
+// runs and feeds the task watchdog (default 5 s).
+static inline void feedIdleTaskPeriodically(void)
+{
+    constexpr uint32_t FEED_INTERVAL_MS{2000};
+    constexpr TickType_t FEED_SLEEP_TICKS{pdMS_TO_TICKS(5)};
+    static uint32_t s_last_feed_ms{};
+    const uint32_t now_ms{static_cast<uint32_t>(esp_timer_get_time() / 1000)};
+    if (now_ms - s_last_feed_ms >= FEED_INTERVAL_MS) {
+        s_last_feed_ms = now_ms;
+        vTaskDelay(FEED_SLEEP_TICKS);
+    }
+}
+#endif
+
+extern "C" void app_main(void)
+{
+    setup();
+    for (;;) {
+#if CONFIG_FREERTOS_UNICORE
+        feedIdleTaskPeriodically();
+#endif
+        loop();
+    }
+}
+#endif

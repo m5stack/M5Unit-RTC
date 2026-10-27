@@ -10,7 +10,7 @@
 #include <M5Unified.h>
 #include <esp_system.h>
 
-#pragma message "Embedded setup/loop"
+#pragma message("Embedded setup/loop")
 
 #if __has_include(<esp_idf_version.h>)
 #include <esp_idf_version.h>
@@ -30,11 +30,7 @@ void test()
 
 void setup()
 {
-    auto m5cfg         = M5.config();
-    m5cfg.pmic_button  = false;  // Disable BtnPWR
-    m5cfg.internal_imu = false;  // Disable internal IMU
-    m5cfg.internal_rtc = false;  // Disable internal RTC
-    M5.begin(m5cfg);
+    M5.begin();
 
     M5_LOGI("CPP %ld", __cplusplus);
     M5_LOGI("ESP-IDF Version %d.%d.%d", (ESP_IDF_VERSION >> 16) & 0xFF, (ESP_IDF_VERSION >> 8) & 0xFF,

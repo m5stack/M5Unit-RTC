@@ -1,0 +1,157 @@
+name: Build(esp-idf-native)
+
+on:
+  push:
+    tags-ignore:
+      - '*.*.*'
+      - 'v*.*.*'
+    branches:
+      - '*'
+    paths:
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
+      - 'examples/UnitUnified/**'
+      - 'CMakeLists.txt'
+      - 'idf_component.yml'
+      - '.github/workflows/esp-idf-build-check.yml'
+  pull_request:
+    paths:
+      - 'src/**.cpp'
+      - 'src/**.hpp'
+      - 'src/**.h'
+      - 'src/**.c'
+      - 'examples/UnitUnified/**'
+      - 'CMakeLists.txt'
+      - 'idf_component.yml'
+      - '.github/workflows/esp-idf-build-check.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The unit has no Kconfig USING_* variant, so the matrix has the chip axis and the idf axis:
+# esp32 = classic Xtensa dual-core, esp32s3 = LCD-capable dual-core Xtensa with PSRAM,
+# esp32c3 = RISC-V single-core (StampC3), esp32c6 (NanoC6) / esp32h2 (NanoH2) = RISC-V single-core which
+# exercises the app_main CONFIG_FREERTOS_UNICORE feedIdle branch, esp32c5 = RISC-V single-core supported from
+# IDF 5.5 (so it is on the v5.5.4 / v6.1 rows only), esp32p4 (M5Stack Tab5) = RISC-V dual-core;
+# the sdkconfig.defaults.esp32p4 overlay (chip-rev minimum keys) is auto-applied.
+# esp32s2 is not a target: M5Unified / M5GFX, which the examples use, do not build it (M5GFX 0.2.32 fails in
+# Bus_SPI.hpp with -Werror=array-bounds on IDF 5.5). Add it when they support it.
+# esp32c61 is not a target until there is M5Stack hardware with it (M5UnitUnified itself already builds it).
+jobs:
+  build-chips:
+    name: ${{ matrix.idf }} ${{ matrix.target }} UnitRTC PeriodicTimer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        # PeriodicTimer (no Wi-Fi) represents the library on every chip: the chip-specific code (wiring helper,
+        # M5Unified / M5GFX, the single core feedIdle branch) and the RISC-V toolchain are not covered by esp32 alone.
+        target: [esp32, esp32s3, esp32c3, esp32c5, esp32c6, esp32h2, esp32p4]
+        # idf boundaries: 5.1.7 = oldest legacy-driver (5.0.x dropped: M5GFX needs esp_mm added
+        # in 5.1), 5.4.4 = new driver/*_master.h era, 5.5.4 = latest 5.x, 6.1 = latest 6.x.
+        # 6.x matters because default warnings become errors there (CONFIG_COMPILER_DISABLE_DEFAULT_ERRORS
+        # defaults to n and common/sdkconfig.defaults does not override it), and GCC 15 / C++26 is the default.
+        idf: [v5.1.7, v5.4.4, v5.5.4, v6.1]
+        exclude:
+          # Not supported by the IDF version
+          - {target: esp32c5, idf: v5.1.7}  # C5 is supported from IDF 5.5 (preview target on 5.4)
+          - {target: esp32c5, idf: v5.4.4}
+          - {target: esp32p4, idf: v5.1.7}  # P4 is supported from IDF 5.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ESP-IDF build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: examples/UnitUnified/UnitRTC/PeriodicTimer
+
+  # The other examples use the same library code as PeriodicTimer, whose chip and idf axes are covered by
+  # build-chips. AlarmNotify / ViaPaHub (M5Unit-HUB, example-only dependency) are built on the representative chip
+  # with the latest 5.x only.
+  build-examples:
+    name: v5.5.4 esp32 ${{ matrix.example }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        example:
+          - AlarmNotify
+          - ViaPaHub
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ESP-IDF build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.4
+          target: esp32
+          path: examples/UnitUnified/UnitRTC/${{ matrix.example }}
+
+  # NTPSync adds Wi-Fi (esp_wifi) and SNTP (esp_netif_sntp, IDF 5.1+). ESP32-P4 (Tab5) has its Wi-Fi on an
+  # ESP32-C6 over SDIO (esp_wifi_remote / esp_hosted, IDF 5.3+). ESP32-H2 has no Wi-Fi, so it is not built.
+  build-wifi:
+    name: ${{ matrix.idf }} ${{ matrix.target }} UnitRTC NTPSync
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        target: [esp32, esp32c6, esp32p4]
+        idf: [v5.1.7, v5.5.4, v6.1]
+        exclude:
+          - {target: esp32p4, idf: v5.1.7}  # P4 is supported from IDF 5.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ESP-IDF build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: examples/UnitUnified/UnitRTC/NTPSync
+
+  # The examples with the built-in RX8130CE of Tab5: the Kconfig option only exists on esp32p4, and the Tab5 Wi-Fi
+  # of NTPSync (esp_hosted) needs IDF 5.3+.
+  build-tab5:
+    name: ${{ matrix.idf }} esp32p4 UnitRTC ${{ matrix.example }} (Tab5 built-in RX8130)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        example: [NTPSync, AlarmNotify, PeriodicTimer]
+        idf: [v5.5.4, v6.1]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Kconfig variant
+        run: |
+          echo "" >> examples/UnitUnified/common/sdkconfig.defaults
+          echo "CONFIG_EXAMPLE_BUILTIN_UNIT_RX8130=y" >> examples/UnitUnified/common/sdkconfig.defaults
+
+      - name: ESP-IDF build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: esp32p4
+          path: examples/UnitUnified/UnitRTC/${{ matrix.example }}

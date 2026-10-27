@@ -1,0 +1,16 @@
+# The "Target RTC" choice for this example.
+rsource "../../../common/Kconfig.variant"
+
+menu "NTPSync settings"
+
+config EXAMPLE_WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+    help
+        SSID to connect to. If empty, the station config stored in NVS is used.
+
+config EXAMPLE_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+
+endmenu

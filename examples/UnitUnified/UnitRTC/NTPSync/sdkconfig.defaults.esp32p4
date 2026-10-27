@@ -1,0 +1,14 @@
+# ESP32-P4 (M5Tab5) ESP-IDF Wi-Fi via the ESP32-C6 co-processor over SDIO (esp_hosted).
+# The Tab5 preset sets the SDIO pins (CLK 12 / CMD 13 / D0-D3 11,10,9,8 / reset 15).
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+CONFIG_ESP32P4_TAB5_C6_BOARD=y
+# The preset defaults the C6 reset to active-low, but on the Tab5 that holds the C6 in reset: SDIO then fails at
+# sdmmc_init_ocr (send_op_cond timeout 0x107) and card init never completes. Active-high releases the C6 and card
+# init succeeds, matching the arduino-esp32 core, which drives this reset active-high and works on the same board.
+# esp_hosted makes the polarity a Kconfig default (not a select), so overriding it here takes effect.
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
+# On ESP-IDF 6.1 esp_hosted's task/mempool exhaust internal DRAM and the P4 platform init
+# (sleep_clock_icg_startup_init) aborts with ESP_ERR_NO_MEM in a reboot loop. Keep esp_hosted off internal RAM
+# by putting its task and memory pool in PSRAM (harmless on 5.5.x, which boots without it).
+CONFIG_ESP_HOSTED_DFLT_TASK_FROM_SPIRAM=y
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y

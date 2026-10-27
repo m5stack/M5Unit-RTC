@@ -21,7 +21,8 @@ namespace unit {
   @brief Real-time clock unit using PCF8563 compatible chip (BM8563/HYM8563)
  */
 class UnitPCF8563 : public Component {
-    M5_UNIT_COMPONENT_HPP_BUILDER(UnitPCF8563, 0x51);
+    // Own move: the ISR handler added by begin() takes the address of the unit
+    M5_UNIT_COMPONENT_HPP_BUILDER_WITHOUT_MOVE(UnitPCF8563, 0x51);
 
 public:
     //! @brief IRQ callback type
@@ -35,10 +36,11 @@ public:
         //! GPIO pin connected to PCF8563 INT pin (-1: not connected)
         int16_t int_pin{-1};
         //! true: poll IRQ status via I2C in update(), false: use hardware interrupt via int_pin
+        //! (polls even if false when int_pin < 0)
         bool polling{true};
         //! CLKOUT pin output frequency (default: disabled)
         pcf8563::ClockOutput clkout{pcf8563::ClockOutput::None};
-        //! Polling interval in milliseconds for IRQ status check in update()
+        //! Polling interval in milliseconds for IRQ status check in update() (polling mode)
         uint32_t polling_interval{500};
         //! Callback invoked from update() when alarm fires (nullptr: disabled)
         irq_callback_t on_alarm{nullptr};
@@ -46,14 +48,52 @@ public:
         irq_callback_t on_timer{nullptr};
     };
 
+    /*!
+      @brief Constructor
+      @param addr I2C address
+     */
     explicit UnitPCF8563(const uint8_t addr = DEFAULT_ADDRESS) : Component(addr)
     {
+        auto ccfg = component_config();
+        // fSCL max 400 kHz on PCF8563 / BM8563 / HYM8563
+        // (BM8563 datasheet lists tSU;STO min 4.0 us, but 400 kHz is used in practice, as in M5Unified)
+        ccfg.clock = 400 * 1000U;
+        component_config(ccfg);
     }
-    virtual ~UnitPCF8563()
-    {
-    }
+    //! @brief Destructor (removes the ISR handler added by begin())
+    virtual ~UnitPCF8563();
+    /*!
+      @brief Move constructor
+      @param other Unit to move from
+      @note The ISR handler added by begin() (hardware interrupt mode) is moved to this unit.
+            If it cannot be moved, the hardware interrupt is disabled (an error is logged)
+      @note Do not move a unit after UnitUnified::add() or after adding it to a hub: they keep its address
+     */
+    UnitPCF8563(UnitPCF8563&& other) noexcept;
+    /*!
+      @brief Move assignment
+      @param other Unit to move from
+      @return This unit
+      @note The ISR handler of this unit is removed, and the one of other is moved to this unit
+            (as the move constructor)
+      @note Do not move a unit after UnitUnified::add() or after adding it to a hub: they keep its address
+     */
+    UnitPCF8563& operator=(UnitPCF8563&& other) noexcept;
 
+    /*!
+      @brief Initialize the unit with config()
+      @return True if successful
+      @note Clears CONTROL1, disables the interrupts and sets TI_TP=0, sets CLKOUT and stops the timer.
+            The flags (AF/TF) are kept so that the wakeup source can be read. In the polling mode,
+            update() calls the callback of a flag that is still set, unless writeAlarm() / writeTimer() clears it first
+            In the hardware interrupt mode it also sets up the GPIO and the ISR, and fails if they fail
+     */
     virtual bool begin() override;
+    /*!
+      @brief Check the alarm / timer flags and invoke the callbacks
+      @param force Check now, regardless of polling_interval (polling mode)
+      @note Does nothing without on_alarm / on_timer
+     */
     virtual void update(const bool force = false) override;
 
     ///@name Settings for begin
@@ -83,8 +123,8 @@ public:
     bool readTime(pcf8563::rtc_time_t& time);
     /*!
       @brief Write time to RTC
-      @param time Time (hours, minutes, seconds)
-      @return True if successful
+      @param time Time (hours 0-23, minutes 0-59, seconds 0-59)
+      @return True if successful, false if out of range or on failure
      */
     bool writeTime(const pcf8563::rtc_time_t& time);
     /*!
@@ -95,8 +135,8 @@ public:
     bool readDate(pcf8563::rtc_date_t& date);
     /*!
       @brief Write date to RTC
-      @param date Date (year, month, date, weekDay)
-      @return True if successful
+      @param date Date (year 1900-2099, month 1-12, date 1-31, weekDay 0-6 or negative to calculate it from the date)
+      @return True if successful, false if out of range or on failure
      */
     bool writeDate(const pcf8563::rtc_date_t& date);
     /*!
@@ -107,8 +147,8 @@ public:
     bool readDateTime(pcf8563::rtc_datetime_t& dt);
     /*!
       @brief Write date and time to RTC
-      @param dt DateTime
-      @return True if successful
+      @param dt DateTime (ranges as writeDate() / writeTime())
+      @return True if successful, false if out of range or on failure
      */
     bool writeDateTime(const pcf8563::rtc_datetime_t& dt);
     /*!
@@ -135,26 +175,42 @@ public:
       (4-pin: GND, VCC, SDA, SCL only).
 
       @note Two modes are supported via config_t:
-      - **Polling mode** (default, `polling=true`): update() periodically reads
-        the IRQ status register via I2C (every 500ms) and invokes the callback.
+      - **Polling mode** (default, `polling=true`, or `int_pin` < 0): update() reads
+        the IRQ status register via I2C every polling_interval ms and invokes the callback.
         Works without the INT pin (GROVE compatible).
       - **Hardware interrupt mode** (`polling=false`, `int_pin` set): begin()
-        calls attachInterrupt() on the specified GPIO. The ISR sets an internal
-        flag; update() detects it and invokes the callback. Requires a direct
-        connection from the PCF8563 INT pin to a host GPIO.
+        adds an ESP-IDF GPIO ISR (gpio_isr_handler_add) on the specified pin and fails if it cannot.
+        The ISR sets an internal flag; update() detects it and invokes the callback.
+        Requires a direct connection from the PCF8563 INT pin to a host GPIO.
 
       @note In both modes, callbacks (on_alarm / on_timer) are called from update(),
       never from an ISR context. Set them in config_t before calling begin().
+      update() does nothing without callbacks.
+
+      @note update() clears only the flags that have a callback; the others are left for
+      readAlarmFlag() / readTimerFlag(). In the hardware interrupt mode a flag with its interrupt
+      enabled is cleared too, since it would hold INT low and no further interrupt would arrive.
+
+      @note A flag is cleared by read-modify-write of CONTROL2, writing the other flag back as read
+      (on the Unit RTC writing 1 sets a flag, unlike the datasheets). The other flag set between
+      the read and the write is lost.
+
+      @note writeAlarm() and writeTimer() do not change the interrupt enable bits (AIE / TIE).
+      The flags are set either way, so the polling mode needs no enable bit.
+      To drive INT (the hardware interrupt mode, or a wakeup through the board), enable it with
+      writeAlarmInterrupt() / writeTimerInterrupt().
+      The M5Unified compatible setAlarmIRQ() / setTimerIRQ() enable it, as M5Unified does.
      */
     ///@name Alarm/Timer
     ///@{
     /*!
-      @brief Set alarm and enable interrupt
+      @brief Set alarm
       @param time Alarm time (minutes, hours). Negative fields are disabled.
       @param date Alarm date (date, weekDay). Negative fields are disabled.
-      @return True if successful
-      @note Clears alarm flag, writes alarm registers, and enables alarm interrupt
-            if any field is non-negative. Disables alarm interrupt if all fields are negative.
+      @return True if successful, false if a non-negative field is out of range
+              (minutes 0-59, hours 0-23, date 1-31, weekDay 0-6) or on failure
+      @note Writes the alarm registers and clears the alarm flag. The alarm interrupt (AIE) is kept;
+            enable it with writeAlarmInterrupt() to drive INT
      */
     bool writeAlarm(const pcf8563::rtc_time_t& time, const pcf8563::rtc_date_t& date);
     /*!
@@ -189,15 +245,31 @@ public:
     bool clearAlarmFlag();
 
     /*!
-      @brief Set countdown timer with millisecond duration
-      @param msec Duration in milliseconds (0 to disable)
-      @param repeat True for periodic (auto-reload via TI_TP), false for one-shot
-      @return Actual duration in milliseconds (0 if disabled)
+      @brief Set the countdown timer with a millisecond period
+      @param msec Period in milliseconds, rounded to seconds (0 or less than 500 to disable)
+      @return Actual period in milliseconds (0 if disabled or on failure)
+      @note The timer repeats: the PCF8563 reloads the countdown every period and sets TF each time
+            (it has no one-shot mode). Stop it with writeTimer(0), e.g. in the on_timer callback.
       @note Automatically selects Hz1 (< 270s) or HzPM (>= 270s) clock source.
-            Clears timer/alarm flags, enables timer and timer interrupt.
+            Clears the timer flag (the alarm flag is kept) and starts the timer. The timer interrupt (TIE)
+            and the /INT output mode (TI_TP) are kept; enable TIE with writeTimerInterrupt() to drive INT.
             Maximum: 255 minutes (15,300,000 ms).
+      @note Only the first period is shorter. The Unit RTC chip decrements the countdown as soon as the timer
+            starts and counts on the seconds tick, so with the 1 Hz source the first TF comes after more than N-2
+            and at most N-1 seconds (N = period in seconds), then every N seconds. The NXP PCF8563 also has an
+            uncertain first period ((N-1) + 1/64 s to N + 1/64 s with the 1 Hz source, NXP UM10301 chapter 17).
      */
-    uint32_t writeTimer(const uint32_t msec, const bool repeat = false);
+    uint32_t writeTimer(const uint32_t msec);
+    /*!
+      @brief Set the countdown timer (the repeat argument is ignored)
+      @deprecated The PCF8563 has no one-shot timer. Use writeTimer(msec), and stop it with writeTimer(0)
+     */
+    [[deprecated("The PCF8563 has no one-shot timer. Use writeTimer(msec) and stop it with writeTimer(0)")]] uint32_t
+    writeTimer(const uint32_t msec, const bool repeat)
+    {
+        (void)repeat;
+        return writeTimer(msec);
+    }
     /*!
       @brief Read timer control settings
       @param[out] enabled True if timer is enabled (TE bit)
@@ -234,6 +306,8 @@ public:
       @brief Write timer interrupt enable state
       @param enabled True to enable timer interrupt (TIE bit)
       @return True if successful
+      @note With the pulse output (TI_TP=1), enable it before writeTimer() starts the timer,
+            so that the first countdown cannot precede it
      */
     bool writeTimerInterrupt(const bool enabled);
     /*!
@@ -248,21 +322,31 @@ public:
      */
     bool clearTimerFlag();
     /*!
-      @brief Read timer periodic mode (TI_TP bit)
-      @param[out] periodic True if periodic (auto-reload), false if one-shot
+      @brief Read the /INT output mode of the timer (TI_TP bit)
+      @param[out] pulse True if /INT pulses every countdown, false if /INT follows TF (stays active until cleared)
       @return True if successful
-      @note When periodic, the countdown timer automatically restarts from the
-            preset value each time it reaches zero. TF flag is set each time.
+      @note The countdown timer always repeats regardless of this bit
      */
-    bool readTimerPeriodic(bool& periodic);
+    bool readTimerInterruptPulse(bool& pulse);
     /*!
-      @brief Write timer periodic mode (TI_TP bit)
-      @param periodic True for periodic (auto-reload), false for one-shot
+      @brief Write the /INT output mode of the timer (TI_TP bit)
+      @param pulse True to pulse /INT every countdown, false to make /INT follow TF (stays active until cleared)
       @return True if successful
-      @note When periodic, the countdown timer automatically restarts from the
-            preset value each time it reaches zero. TF flag is set each time.
+      @note The countdown timer always repeats regardless of this bit
      */
-    bool writeTimerPeriodic(const bool periodic);
+    bool writeTimerInterruptPulse(const bool pulse);
+    //! @deprecated TI_TP selects the /INT output mode, not periodic / one-shot. Use readTimerInterruptPulse()
+    [[deprecated("TI_TP selects the /INT output mode, not periodic / one-shot. Use readTimerInterruptPulse()")]] bool
+    readTimerPeriodic(bool& periodic)
+    {
+        return readTimerInterruptPulse(periodic);
+    }
+    //! @deprecated TI_TP selects the /INT output mode, not periodic / one-shot. Use writeTimerInterruptPulse()
+    [[deprecated("TI_TP selects the /INT output mode, not periodic / one-shot. Use writeTimerInterruptPulse()")]] bool
+    writeTimerPeriodic(const bool periodic)
+    {
+        return writeTimerInterruptPulse(periodic);
+    }
     ///@}
 
     ///@name Clock Control
@@ -416,7 +500,8 @@ public:
       @brief Set alarm by date and time
       @param date Date (can be nullptr). Negative fields are ignored.
       @param time Time (can be nullptr). Negative fields are ignored.
-      @return 1 if enabled, 0 if disabled
+      @return 1 if enabled, 0 if disabled or on failure
+      @note As M5Unified, the alarm interrupt (AIE) is enabled too (disabled if all fields are negative)
      */
     int setAlarmIRQ(const m5::rtc_date_t* date, const m5::rtc_time_t* time);
     //! @brief Set alarm by date and time (reference)
@@ -430,19 +515,23 @@ public:
         return setAlarmIRQ(nullptr, &time);
     }
     /*!
-      @brief Set timer-based alarm IRQ (deprecated, use setTimerIRQ)
-      @param afterSeconds Seconds until alarm (negative to disable)
-      @return Actual seconds set, or -1 if disabled
+      @brief Set the timer IRQ in seconds (same as setTimerIRQ(afterSeconds * 1000))
+      @param afterSeconds Timer period in seconds (negative to disable), limited to UINT32_MAX / 1000
+      @return Actual seconds set, -1 if disabled by a negative value, 0 if disabled by 0 or on failure
+      @note The timer repeats; see writeTimer()
+      @note As M5Unified, the timer interrupt (TIE) is enabled too; see setTimerIRQ()
      */
     int setAlarmIRQ(const int afterSeconds);
     /*!
       @brief Set timer IRQ in milliseconds
-      @param timer_msec Milliseconds until IRQ (0 to disable)
-      @return Actual milliseconds set (0 if disabled)
+      @param timer_msec Timer period in milliseconds (0, or less than 500, to disable)
+      @return Actual milliseconds set (0 if disabled or on failure)
+      @note The timer repeats; see writeTimer()
+      @note As M5Unified, the timer interrupt (TIE) is enabled too, before the timer starts (disabled when the timer is)
      */
     uint32_t setTimerIRQ(const uint32_t timer_msec);
 
-    //! @brief Get voltage low status
+    //! @brief Get voltage low status (true also on I2C failure)
     inline bool getVoltLow()
     {
         bool low{};
@@ -474,29 +563,31 @@ public:
 #endif  // defined(__M5_RTC_BASE_H__) || defined(__M5UNIFIED_HPP__)
 
 protected:
-    ///@name I2C register access (stop bit centralized here for experimentation)
-    ///@{
+    // I2C register access (STOP between the address and data phases, see READ_STOP / WRITE_STOP)
     bool read_register(const uint8_t reg, uint8_t* buf, const size_t len);
     bool read_register8(const uint8_t reg, uint8_t& val);
     bool write_register(const uint8_t reg, const uint8_t* buf, const size_t len);
     bool write_register8(const uint8_t reg, const uint8_t val);
-    ///@}
 
-    //! @brief Read time and/or date registers (nullable pointer support)
+    // Read time and/or date registers (nullable pointer support)
     bool read_datetime(pcf8563::rtc_date_t* date, pcf8563::rtc_time_t* time);
-    //! @brief Write time and/or date registers (nullable pointer support)
+    // Write time and/or date registers (nullable pointer support)
     bool write_datetime(const pcf8563::rtc_date_t* date, const pcf8563::rtc_time_t* time);
-    //! @brief Read CONTROL2 register
+    // Read CONTROL2 register
     bool read_control2(uint8_t& val);
-    //! @brief Write CONTROL2 register with bit mask (read-modify-write)
+    // Write CONTROL2 register with bit mask (read-modify-write)
     bool write_control2_bits(const uint8_t mask, const uint8_t bits);
 
 private:
     static void IRAM_ATTR isr_handler(void* arg);
     void check_irq_flags();
+    void remove_isr();
+    // Point the ISR handler of _isr_pin at this unit (after a move)
+    void rebind_isr();
 
     config_t _cfg{};
     volatile bool _isr_fired{};
+    int16_t _isr_pin{-1};  // Pin with the ISR handler added by begin() (-1: none)
 };
 
 namespace pcf8563 {
