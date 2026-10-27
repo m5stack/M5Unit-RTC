@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['rtc_0',['M5Unit-RTC',['../index.html',1,'']]]
+  ['list_0',['Deprecated List',['../deprecated.html',1,'']]]
 ];

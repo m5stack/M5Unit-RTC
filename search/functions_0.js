@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['clearalarmflag_0',['clearAlarmFlag',['../classm5_1_1unit_1_1_unit_p_c_f8563.html#ac3024c1999c8df2b504b2a263f9601c4',1,'m5::unit::UnitPCF8563']]],
-  ['cleartimerflag_1',['clearTimerFlag',['../classm5_1_1unit_1_1_unit_p_c_f8563.html#a1b44c8afc1c14fceeafdc8b7eebc3183',1,'m5::unit::UnitPCF8563']]],
-  ['config_2',['config',['../classm5_1_1unit_1_1_unit_p_c_f8563.html#ae824a33866af9805f4cc29d00b3eb0c7',1,'m5::unit::UnitPCF8563::config() const'],['../classm5_1_1unit_1_1_unit_p_c_f8563.html#ab45379a043b45a77a7a1b2eb58d84be8',1,'m5::unit::UnitPCF8563::config(const config_t &amp;cfg)']]]
+  ['bcd2byte_0',['bcd2byte',['../rtc__utility_8hpp.html#a1e44c8edbe178f157ed3829e7661f044',1,'m5::unit::rtc']]],
+  ['begin_1',['begin',['../classm5_1_1unit_1_1_unit_p_c_f8563.html#a197de37f4ff21cb2a8f991c10906cb09',1,'m5::unit::UnitPCF8563::begin()'],['../classm5_1_1unit_1_1_unit_r_x8130.html#a18b233db1145a8c01a7716d41469e5ae',1,'m5::unit::UnitRX8130::begin()']]],
+  ['byte2bcd_2',['byte2bcd',['../rtc__utility_8hpp.html#ac9adb87df83a00d7fa70df35a9115665',1,'m5::unit::rtc']]]
 ];

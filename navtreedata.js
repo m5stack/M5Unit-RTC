@@ -25,6 +25,7 @@
 var NAVTREE =
 [
   [ "M5Unit-RTC", "index.html", [
+    [ "Deprecated List", "deprecated.html", null ],
     [ "Classes", "annotated.html", [
       [ "Class List", "annotated.html", "annotated_dup" ],
       [ "Class Index", "classes.html", null ],
@@ -44,7 +45,8 @@ var NAVTREE =
 
 var NAVTREEINDEX =
 [
-"_m5_unit_unified_r_t_c_8hpp.html"
+"_m5_unit_unified_r_t_c_8hpp.html",
+"unit___r_x8130__types_8hpp.html#abe8ff0e71a5c12501fc9be4be642be95a93fc91005ece72cfbefd69db0deb160c"
 ];
 
 var SYNCONMSG = 'click to disable panel synchronisation';

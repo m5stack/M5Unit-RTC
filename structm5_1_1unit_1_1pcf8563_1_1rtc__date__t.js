@@ -1,5 +1,7 @@
 var structm5_1_1unit_1_1pcf8563_1_1rtc__date__t =
 [
+    [ "rtc_date_t", "structm5_1_1unit_1_1pcf8563_1_1rtc__date__t.html#ada32068a5f48174361b88987482c1101", null ],
+    [ "rtc_date_t", "structm5_1_1unit_1_1pcf8563_1_1rtc__date__t.html#aa6d8a9a318d2450f7f79a0de47b4851f", null ],
     [ "to_tm", "structm5_1_1unit_1_1pcf8563_1_1rtc__date__t.html#a44f1eb9ec4503feb0ffd42b072cf3431", null ],
     [ "date", "structm5_1_1unit_1_1pcf8563_1_1rtc__date__t.html#a83fa85bf42dddd2d7827fb548e0160b0", null ],
     [ "month", "structm5_1_1unit_1_1pcf8563_1_1rtc__date__t.html#a9e971e9d65e877666960bb23a6a8e24d", null ],

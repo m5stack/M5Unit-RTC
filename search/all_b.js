@@ -1,8 +1,6 @@
 var searchData=
 [
-  ['unit_5fpcf8563_2ecpp_0',['unit_PCF8563.cpp',['../unit___p_c_f8563_8cpp.html',1,'']]],
-  ['unit_5fpcf8563_2ehpp_1',['unit_PCF8563.hpp',['../unit___p_c_f8563_8hpp.html',1,'']]],
-  ['unit_5fpcf8563_5ftypes_2ehpp_2',['unit_PCF8563_types.hpp',['../unit___p_c_f8563__types_8hpp.html',1,'']]],
-  ['unitpcf8563_3',['UnitPCF8563',['../classm5_1_1unit_1_1_unit_p_c_f8563.html',1,'m5::unit']]],
-  ['unitrtc_4',['UnitRTC',['../_m5_unit_unified_r_t_c_8hpp.html#a86aadd3f5d38080e2a921a4072fdbcbb',1,'m5::unit']]]
+  ['polling_0',['polling',['../structm5_1_1unit_1_1_unit_p_c_f8563_1_1config__t.html#a559484f167c7634606ddb669d4e228ba',1,'m5::unit::UnitPCF8563::config_t::polling'],['../structm5_1_1unit_1_1_unit_r_x8130_1_1config__t.html#a2ab6d178450f0d1c0645dabf0b4f4fe6',1,'m5::unit::UnitRX8130::config_t::polling']]],
+  ['polling_5finterval_1',['polling_interval',['../structm5_1_1unit_1_1_unit_p_c_f8563_1_1config__t.html#a4db9f1c5e892d77d702d083297c922a1',1,'m5::unit::UnitPCF8563::config_t::polling_interval'],['../structm5_1_1unit_1_1_unit_r_x8130_1_1config__t.html#ac97a10d3bdc6e0e44aedd4f9e5e134d9',1,'m5::unit::UnitRX8130::config_t::polling_interval']]],
+  ['power_5fswitch_2',['power_switch',['../structm5_1_1unit_1_1_unit_r_x8130_1_1config__t.html#a3279b22fca77846947729f3ae17b062b',1,'m5::unit::UnitRX8130::config_t']]]
 ];

@@ -27,7 +27,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">M5Unit-RTC<span id="projectnumber">&#160;0.1.0 git rev:26c1349</span>
+   <div id="projectname">M5Unit-RTC<span id="projectnumber">&#160;0.2.0 git rev:92220a2</span>
    </div>
   </td>
  </tr>
@@ -114,9 +114,11 @@ $(function(){initNavTree('structm5_1_1unit_1_1pcf8563_1_1rtc__time__t.html','');
 Public Member Functions</h2></td></tr>
 <tr class="memitem:ac1eac20f25d57f866a1d067517dbc436" id="r_ac1eac20f25d57f866a1d067517dbc436"><td class="memItemLeft" align="right" valign="top"><a id="ac1eac20f25d57f866a1d067517dbc436" name="ac1eac20f25d57f866a1d067517dbc436"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>rtc_time_t</b> (int8_t hours_=-1, int8_t minutes_=-1, int8_t seconds_=-1)</td></tr>
+<tr class="memdesc:ac1eac20f25d57f866a1d067517dbc436"><td class="mdescLeft">&#160;</td><td class="mdescRight">Construct from fields (default -1: unset) <br /></td></tr>
 <tr class="separator:ac1eac20f25d57f866a1d067517dbc436"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abc6ab848847e62ed8bf3af9d80d2316f" id="r_abc6ab848847e62ed8bf3af9d80d2316f"><td class="memItemLeft" align="right" valign="top"><a id="abc6ab848847e62ed8bf3af9d80d2316f" name="abc6ab848847e62ed8bf3af9d80d2316f"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>rtc_time_t</b> (const tm &amp;t)</td></tr>
+<tr class="memdesc:abc6ab848847e62ed8bf3af9d80d2316f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Construct from struct tm (time fields only) <br /></td></tr>
 <tr class="separator:abc6ab848847e62ed8bf3af9d80d2316f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a439e176d4b466929dde1d089ce077725" id="r_a439e176d4b466929dde1d089ce077725"><td class="memItemLeft" align="right" valign="top"><a id="a439e176d4b466929dde1d089ce077725" name="a439e176d4b466929dde1d089ce077725"></a>
 tm&#160;</td><td class="memItemRight" valign="bottom"><b>to_tm</b> () const</td></tr>
@@ -134,12 +136,15 @@ static <a class="el" href="structm5_1_1unit_1_1pcf8563_1_1rtc__time__t.html">rtc
 Public Attributes</h2></td></tr>
 <tr class="memitem:a6c3d6011d27de6b2c9e7f55088e46ea6" id="r_a6c3d6011d27de6b2c9e7f55088e46ea6"><td class="memItemLeft" align="right" valign="top"><a id="a6c3d6011d27de6b2c9e7f55088e46ea6" name="a6c3d6011d27de6b2c9e7f55088e46ea6"></a>
 int8_t&#160;</td><td class="memItemRight" valign="bottom"><b>hours</b> {}</td></tr>
+<tr class="memdesc:a6c3d6011d27de6b2c9e7f55088e46ea6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Hours 0-23 (-1: unset / disabled) <br /></td></tr>
 <tr class="separator:a6c3d6011d27de6b2c9e7f55088e46ea6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a181b39597ad8e6f4905d60c29e72b3b5" id="r_a181b39597ad8e6f4905d60c29e72b3b5"><td class="memItemLeft" align="right" valign="top"><a id="a181b39597ad8e6f4905d60c29e72b3b5" name="a181b39597ad8e6f4905d60c29e72b3b5"></a>
 int8_t&#160;</td><td class="memItemRight" valign="bottom"><b>minutes</b> {}</td></tr>
+<tr class="memdesc:a181b39597ad8e6f4905d60c29e72b3b5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Minutes 0-59 (-1: unset / disabled) <br /></td></tr>
 <tr class="separator:a181b39597ad8e6f4905d60c29e72b3b5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1ebc9987ba4d068f6eba49511b2b5aed" id="r_a1ebc9987ba4d068f6eba49511b2b5aed"><td class="memItemLeft" align="right" valign="top"><a id="a1ebc9987ba4d068f6eba49511b2b5aed" name="a1ebc9987ba4d068f6eba49511b2b5aed"></a>
 int8_t&#160;</td><td class="memItemRight" valign="bottom"><b>seconds</b> {}</td></tr>
+<tr class="memdesc:a1ebc9987ba4d068f6eba49511b2b5aed"><td class="mdescLeft">&#160;</td><td class="mdescRight">Seconds 0-59 (-1: unset / disabled) <br /></td></tr>
 <tr class="separator:a1ebc9987ba4d068f6eba49511b2b5aed"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>

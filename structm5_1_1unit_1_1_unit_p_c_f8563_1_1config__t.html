@@ -27,7 +27,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">M5Unit-RTC<span id="projectnumber">&#160;0.1.0 git rev:26c1349</span>
+   <div id="projectname">M5Unit-RTC<span id="projectnumber">&#160;0.2.0 git rev:92220a2</span>
    </div>
   </td>
  </tr>
@@ -114,9 +114,7 @@ Public Attributes</h2></td></tr>
 int16_t&#160;</td><td class="memItemRight" valign="bottom"><b>int_pin</b> {-1}</td></tr>
 <tr class="memdesc:a6ad3796e6456c6491beb433a87e4a58e"><td class="mdescLeft">&#160;</td><td class="mdescRight">GPIO pin connected to PCF8563 INT pin (-1: not connected) <br /></td></tr>
 <tr class="separator:a6ad3796e6456c6491beb433a87e4a58e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a559484f167c7634606ddb669d4e228ba" id="r_a559484f167c7634606ddb669d4e228ba"><td class="memItemLeft" align="right" valign="top"><a id="a559484f167c7634606ddb669d4e228ba" name="a559484f167c7634606ddb669d4e228ba"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>polling</b> {true}</td></tr>
-<tr class="memdesc:a559484f167c7634606ddb669d4e228ba"><td class="mdescLeft">&#160;</td><td class="mdescRight">true: poll IRQ status via I2C in update(), false: use hardware interrupt via int_pin <br /></td></tr>
+<tr class="memitem:a559484f167c7634606ddb669d4e228ba" id="r_a559484f167c7634606ddb669d4e228ba"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="#a559484f167c7634606ddb669d4e228ba">polling</a> {true}</td></tr>
 <tr class="separator:a559484f167c7634606ddb669d4e228ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a149c2d4020d59bcb6765ccf07537e829" id="r_a149c2d4020d59bcb6765ccf07537e829"><td class="memItemLeft" align="right" valign="top"><a id="a149c2d4020d59bcb6765ccf07537e829" name="a149c2d4020d59bcb6765ccf07537e829"></a>
 <a class="el" href="unit___p_c_f8563__types_8hpp.html#a564f9ea53d483cf88ad6ab21a67479ce">pcf8563::ClockOutput</a>&#160;</td><td class="memItemRight" valign="bottom"><b>clkout</b> {<a class="el" href="unit___p_c_f8563__types_8hpp.html#a564f9ea53d483cf88ad6ab21a67479cea6adf97f83acf6453d4a6a4b1070f3754">pcf8563::ClockOutput::None</a>}</td></tr>
@@ -124,20 +122,36 @@ bool&#160;</td><td class="memItemRight" valign="bottom"><b>polling</b> {true}</t
 <tr class="separator:a149c2d4020d59bcb6765ccf07537e829"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4db9f1c5e892d77d702d083297c922a1" id="r_a4db9f1c5e892d77d702d083297c922a1"><td class="memItemLeft" align="right" valign="top"><a id="a4db9f1c5e892d77d702d083297c922a1" name="a4db9f1c5e892d77d702d083297c922a1"></a>
 uint32_t&#160;</td><td class="memItemRight" valign="bottom"><b>polling_interval</b> {500}</td></tr>
-<tr class="memdesc:a4db9f1c5e892d77d702d083297c922a1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Polling interval in milliseconds for IRQ status check in update() <br /></td></tr>
+<tr class="memdesc:a4db9f1c5e892d77d702d083297c922a1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Polling interval in milliseconds for IRQ status check in <a class="el" href="classm5_1_1unit_1_1_unit_p_c_f8563.html#a9077d22512ec79475258aaa94e10880b" title="Check the alarm / timer flags and invoke the callbacks.">update()</a> (polling mode) <br /></td></tr>
 <tr class="separator:a4db9f1c5e892d77d702d083297c922a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab7ec0e12c4a4c8d1e52e7a462e24f6e6" id="r_ab7ec0e12c4a4c8d1e52e7a462e24f6e6"><td class="memItemLeft" align="right" valign="top"><a id="ab7ec0e12c4a4c8d1e52e7a462e24f6e6" name="ab7ec0e12c4a4c8d1e52e7a462e24f6e6"></a>
 <a class="el" href="classm5_1_1unit_1_1_unit_p_c_f8563.html#ac166222d2af2eae0a898e6a6736a1f88">irq_callback_t</a>&#160;</td><td class="memItemRight" valign="bottom"><b>on_alarm</b> {nullptr}</td></tr>
-<tr class="memdesc:ab7ec0e12c4a4c8d1e52e7a462e24f6e6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Callback invoked from update() when alarm fires (nullptr: disabled) <br /></td></tr>
+<tr class="memdesc:ab7ec0e12c4a4c8d1e52e7a462e24f6e6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Callback invoked from <a class="el" href="classm5_1_1unit_1_1_unit_p_c_f8563.html#a9077d22512ec79475258aaa94e10880b" title="Check the alarm / timer flags and invoke the callbacks.">update()</a> when alarm fires (nullptr: disabled) <br /></td></tr>
 <tr class="separator:ab7ec0e12c4a4c8d1e52e7a462e24f6e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a50fef11296cec0d384ebebe042823000" id="r_a50fef11296cec0d384ebebe042823000"><td class="memItemLeft" align="right" valign="top"><a id="a50fef11296cec0d384ebebe042823000" name="a50fef11296cec0d384ebebe042823000"></a>
 <a class="el" href="classm5_1_1unit_1_1_unit_p_c_f8563.html#ac166222d2af2eae0a898e6a6736a1f88">irq_callback_t</a>&#160;</td><td class="memItemRight" valign="bottom"><b>on_timer</b> {nullptr}</td></tr>
-<tr class="memdesc:a50fef11296cec0d384ebebe042823000"><td class="mdescLeft">&#160;</td><td class="mdescRight">Callback invoked from update() when timer fires (nullptr: disabled) <br /></td></tr>
+<tr class="memdesc:a50fef11296cec0d384ebebe042823000"><td class="mdescLeft">&#160;</td><td class="mdescRight">Callback invoked from <a class="el" href="classm5_1_1unit_1_1_unit_p_c_f8563.html#a9077d22512ec79475258aaa94e10880b" title="Check the alarm / timer flags and invoke the callbacks.">update()</a> when timer fires (nullptr: disabled) <br /></td></tr>
 <tr class="separator:a50fef11296cec0d384ebebe042823000"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>Settings for begin. </p>
-</div></div><!-- contents -->
+</div><h2 class="groupheader">Member Data Documentation</h2>
+<a id="a559484f167c7634606ddb669d4e228ba" name="a559484f167c7634606ddb669d4e228ba"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a559484f167c7634606ddb669d4e228ba">&#9670;&#160;</a></span>polling</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool m5::unit::UnitPCF8563::config_t::polling {true}</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<p>true: poll IRQ status via I2C in <a class="el" href="classm5_1_1unit_1_1_unit_p_c_f8563.html#a9077d22512ec79475258aaa94e10880b" title="Check the alarm / timer flags and invoke the callbacks.">update()</a>, false: use hardware interrupt via int_pin (polls even if false when int_pin &lt; 0) </p>
+
+</div>
+</div>
+</div><!-- contents -->
 </div><!-- doc-content -->
 <!-- start footer part -->
 <div id="nav-path" class="navpath"><!-- id is needed for treeview function! -->

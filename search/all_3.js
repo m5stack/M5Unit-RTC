@@ -1,10 +1,10 @@
 var searchData=
 [
-  ['hz1_0',['Hz1',['../unit___p_c_f8563__types_8hpp.html#ad49437718049ad1a744dd4e2c10fe7e3a42294b2d3765eba368632a6156ebbf74',1,'Hz1m5::unit::pcf8563'],['../unit___p_c_f8563__types_8hpp.html#a564f9ea53d483cf88ad6ab21a67479cea42294b2d3765eba368632a6156ebbf74',1,'Hz1m5::unit::pcf8563']]],
-  ['hz1024_1',['Hz1024',['../unit___p_c_f8563__types_8hpp.html#a564f9ea53d483cf88ad6ab21a67479ceab6fb6864b027bf20b4afc15df67d3604',1,'m5::unit::pcf8563']]],
-  ['hz32_2',['Hz32',['../unit___p_c_f8563__types_8hpp.html#a564f9ea53d483cf88ad6ab21a67479cea8b15e3cd1ca524bb83be0afaaaea631e',1,'m5::unit::pcf8563']]],
-  ['hz32768_3',['Hz32768',['../unit___p_c_f8563__types_8hpp.html#a564f9ea53d483cf88ad6ab21a67479cea3208b3534b8892d96e5cf6f283e372d2',1,'m5::unit::pcf8563']]],
-  ['hz4096_4',['Hz4096',['../unit___p_c_f8563__types_8hpp.html#ad49437718049ad1a744dd4e2c10fe7e3a638d219a0db79d4cf5f7127649421079',1,'m5::unit::pcf8563']]],
-  ['hz64_5',['Hz64',['../unit___p_c_f8563__types_8hpp.html#ad49437718049ad1a744dd4e2c10fe7e3a10b6e04246c67f47eb478a26bbe868c8',1,'m5::unit::pcf8563']]],
-  ['hzpm_6',['HzPM',['../unit___p_c_f8563__types_8hpp.html#ad49437718049ad1a744dd4e2c10fe7e3a34a41415b32cdedf2a3e5871fab764b8',1,'m5::unit::pcf8563']]]
+  ['date_0',['date',['../structm5_1_1unit_1_1pcf8563_1_1rtc__date__t.html#a83fa85bf42dddd2d7827fb548e0160b0',1,'m5::unit::pcf8563::rtc_date_t::date'],['../structm5_1_1unit_1_1pcf8563_1_1rtc__datetime__t.html#ac6b5e6d08948be15a6aed9083b790ed3',1,'m5::unit::pcf8563::rtc_datetime_t::date']]],
+  ['day_5fof_5fweek_1',['day_of_week',['../rtc__utility_8hpp.html#a3f6098fd1ea42272c4585c210fd2ae0f',1,'m5::unit::rtc']]],
+  ['deprecated_20list_2',['Deprecated List',['../deprecated.html',1,'']]],
+  ['detectiontime_3',['DetectionTime',['../unit___r_x8130__types_8hpp.html#ace07ec84439c31a4522461ab0e44529c',1,'m5::unit::rx8130']]],
+  ['digital_5foffset_5fmax_4',['DIGITAL_OFFSET_MAX',['../unit___r_x8130__types_8hpp.html#a601f61a2b4f22bee6cdbcd009ca32ec7',1,'m5::unit::rx8130']]],
+  ['digital_5foffset_5fmin_5',['DIGITAL_OFFSET_MIN',['../unit___r_x8130__types_8hpp.html#af4a63843088812dadadbaa84725c5d01',1,'m5::unit::rx8130']]],
+  ['digital_5foffset_5fstep_5fppm_6',['DIGITAL_OFFSET_STEP_PPM',['../unit___r_x8130__types_8hpp.html#a6a368810d1ba8c06a54d47cc0e4ec2af',1,'m5::unit::rx8130']]]
 ];
